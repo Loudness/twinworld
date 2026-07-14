@@ -57,6 +57,62 @@ def move_recolor_task() -> Task:
 
 
 @pytest.fixture
+def three_way_move_task() -> Task:
+    """Colour 2 moves right, 3 moves down, 6 moves left — three rules needed.
+
+    Blind enumeration at depth 2 cannot express three translations; the
+    analogy path proposes exactly three rules and searches depth 3 trivially.
+    """
+    return Task(
+        train=(
+            (
+                T("20000", "00300", "00000", "00060", "00000"),
+                T("02000", "00000", "00300", "00600", "00000"),
+            ),
+            (
+                T("00020", "30000", "00000", "00060", "00000"),
+                T("00002", "00000", "30000", "00600", "00000"),
+            ),
+        ),
+        test=(
+            (
+                T("00000", "02000", "00030", "06000", "00000"),
+                T("00000", "00200", "00000", "60030", "00000"),
+            ),
+        ),
+        task_id="synthetic-three-way",
+    )
+
+
+@pytest.fixture
+def denoise_task() -> Task:
+    """Delete the 1-cell specks, keep the big block — all the SAME colour.
+
+    Colour-substitution cannot separate specks from block, so the blind path
+    is hopeless at any depth; only smallest-objects + delete expresses it.
+    """
+    return Task(
+        train=(
+            (
+                T("33000", "33000", "00030", "00000", "30000"),
+                T("33000", "33000", "00000", "00000", "00000"),
+            ),
+            (
+                T("00030", "00000", "00000", "00033", "00033"),
+                T("00000", "00000", "00000", "00033", "00033"),
+            ),
+        ),
+        test=(
+            (
+                T("00033", "00033", "00000", "30000", "00000"),
+                T("00033", "00033", "00000", "00000", "00000"),
+            ),
+        ),
+        task_id="synthetic-denoise",
+    )
+
+
+@pytest.fixture
 def unsolvable_task() -> Task:
     """Object duplication: outside the slice vocabulary by construction."""
     return Task(

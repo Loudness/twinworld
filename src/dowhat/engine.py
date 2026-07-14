@@ -16,7 +16,7 @@ Two labeled counterfactual modes (von Kügelgen et al. 2023):
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import product
+from itertools import combinations, product
 from typing import Sequence
 
 import networkx as nx
@@ -191,3 +191,77 @@ def backtrack(solution: Solution, trace: Trace, edited_input: Grid) -> Counterfa
     start = parse_grid(edited_input, trace.states[0].abstraction)
     cf_trace = solution.cache.run(start, trace.mechanisms)
     return Counterfactual("backtracking", trace, cf_trace, 0, trace.mechanisms)
+
+
+def minimal_edits(
+    solution: Solution,
+    trace: Trace,
+    target: Grid,
+    pool: Sequence[Mechanism],
+    k_max: int = 2,
+    max_results: int = 16,
+) -> tuple[int | None, list[Counterfactual]]:
+    """All smallest program-edit sets that make ``trace`` end at ``target``.
+
+    Edits are substitutions at program positions from ``pool`` (Tsirtsis et
+    al.'s action-edit notion). The search is breadth-first over edit-set size
+    k and exhaustive within each k, so the results at the first non-empty k
+    are CERTIFIED minimal — and ``(None, [])`` is a certificate that the
+    target is unreachable within ``k_max`` edits over this pool. Completeness
+    of the returned *set* is capped at ``max_results`` per k; minimality of k
+    itself is never affected by the cap.
+    """
+    target = as_grid(target)
+    pool = list(dict.fromkeys(pool))
+    n = len(trace.mechanisms)
+    for k in range(1, min(k_max, n) + 1):
+        found: list[Counterfactual] = []
+        for positions in combinations(range(n), k):
+            for replacements in product(pool, repeat=k):
+                if any(replacements[i] == trace.mechanisms[p] for i, p in enumerate(positions)):
+                    continue  # not a real edit at that position
+                program = list(trace.mechanisms)
+                for i, p in enumerate(positions):
+                    program[p] = replacements[i]
+                cf_trace = solution.cache.run(trace.states[0], program)
+                if cf_trace is not None and cf_trace.outcome.key == target:
+                    found.append(
+                        Counterfactual("contrastive", trace, cf_trace, positions[0], tuple(program))
+                    )
+                    if len(found) >= max_results:
+                        break
+            if len(found) >= max_results:
+                break
+        if found:
+            return k, found
+    return None, []
+
+
+def solve_all(
+    task: Task,
+    primitives: Sequence[Mechanism],
+    max_depth: int = 2,
+    abstraction: str = "cc4",
+    limit: int = 32,
+) -> list[Program]:
+    """Every program (up to ``limit``) that fits all train pairs, at the
+    minimal depth where any fits — the raw material for underdetermination
+    diagnosis: programs indistinguishable on the demonstrations can only be
+    told apart counterfactually."""
+    cache = ApplyCache()
+    train_inputs = [parse_grid(i, abstraction) for i, _ in task.train]
+    expected = [as_grid(o) for _, o in task.train]
+    for depth in range(1, max_depth + 1):
+        fits: list[Program] = []
+        for program in product(primitives, repeat=depth):
+            for state, want in zip(train_inputs, expected):
+                trace = cache.run(state, program)
+                if trace is None or trace.outcome.key != want:
+                    break
+            else:
+                fits.append(tuple(program))
+                if len(fits) >= limit:
+                    break
+        if fits:
+            return fits
+    return []

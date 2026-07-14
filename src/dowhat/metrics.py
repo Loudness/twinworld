@@ -75,6 +75,44 @@ class MetricVector:
         }
 
 
+def edited_steps(cf: Counterfactual) -> frozenset[int]:
+    """Program positions where the counterfactual world differs from the factual."""
+    return frozenset(
+        i for i, (a, b) in enumerate(zip(cf.factual.mechanisms, cf.program)) if a != b
+    )
+
+
+def responsibility_profile(cfs: list[Counterfactual]) -> dict[int, float]:
+    """Chockler–Halpern degree of responsibility of each program step for the
+    contrastive outcome: 1/k for a step appearing in a minimal edit set of
+    size k, 0 for steps appearing in none (Chockler & Halpern, JAIR 2004;
+    modified-HP causes per Halpern 2015 — in this deterministic single-path
+    setting the minimal edit sets play the role of cause-plus-witness sets)."""
+    if not cfs:
+        return {}
+    profile = {t: 0.0 for t in range(len(cfs[0].factual.mechanisms))}
+    for cf in cfs:
+        edits = edited_steps(cf)
+        if not edits:
+            continue
+        share = 1.0 / len(edits)
+        for t in edits:
+            profile[t] = max(profile[t], share)
+    return profile
+
+
+def diversity(cfs: list[Counterfactual]) -> float:
+    """Mean pairwise outcome proximity across a returned counterfactual set
+    (DiCE's requirement that explainers offer genuinely different worlds)."""
+    outcomes = [cf.counterfactual.outcome for cf in cfs if cf.applicable]
+    if len(outcomes) < 2:
+        return 0.0
+    distances = [
+        proximity(a, b) for i, a in enumerate(outcomes) for b in outcomes[i + 1 :]
+    ]
+    return sum(distances) / len(distances)
+
+
 def evaluate(solution: Solution, cf: Counterfactual) -> MetricVector:
     prox = (
         proximity(cf.factual.outcome, cf.counterfactual.outcome)

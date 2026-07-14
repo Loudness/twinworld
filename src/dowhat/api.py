@@ -9,12 +9,23 @@ as necessary-not-sufficient.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Sequence
 
 from . import metrics as _metrics
 from .analogy import induce_rules
-from .engine import Counterfactual, Solution, Task, UnsolvedTaskError, backtrack, intervene, solve
+from .engine import (
+    Counterfactual,
+    Solution,
+    Task,
+    Trace,
+    UnsolvedTaskError,
+    backtrack,
+    intervene,
+    minimal_edits,
+    solve,
+)
 from .mechanisms import Mechanism, candidate_primitives
 from .refute import RefutationReport, refutation_battery
 from .representation import ABSTRACTIONS, Grid, as_grid, infer_background, parse_grid
@@ -150,11 +161,40 @@ class Representational:
     abstraction: str
 
 
-Query = Interventional | Backtracking | Representational
+@dataclass(frozen=True)
+class Contrastive:
+    """Why is the outcome of ``on`` what it is, rather than ``target_output``?
+
+    Answered by the smallest program-edit set reaching the target (certified
+    minimal), or by a certificate that the target is unreachable within
+    ``k_max`` edits — the outcome is robust against this foil.
+    """
+
+    target_output: Grid
+    on: str = "train[0]"
+    k_max: int = 2
+
+
+Query = Interventional | Backtracking | Representational | Contrastive
 
 
 class IdentificationError(Exception):
     """The query is not well-posed for this representation — and why."""
+
+
+def _resolve_trace(rep: CausalRepresentation, on: str) -> Trace:
+    m = re.fullmatch(r"(train|test)\[(\d+)\]", on)
+    if not m:
+        raise IdentificationError(
+            f"unknown trace reference {on!r}; use 'train[i]' or 'test[i]'"
+        )
+    kind, idx = m.group(1), int(m.group(2))
+    traces = rep.solution.train_traces if kind == "train" else rep.solution.test_traces
+    if idx >= len(traces):
+        raise IdentificationError(
+            f"{on} does not exist: the solution has {len(traces)} {kind} trace(s)"
+        )
+    return traces[idx]
 
 
 @dataclass(frozen=True)
@@ -200,6 +240,16 @@ def identify(rep: CausalRepresentation, query: Query) -> IdentifiedQuery:
                 f"({rep.abstraction}); the counterfactual would be the factual world"
             )
         return IdentifiedQuery(rep, query, "representational")
+    if isinstance(query, Contrastive):
+        trace = _resolve_trace(rep, query.on)
+        if query.k_max < 1:
+            raise IdentificationError("k_max must be at least 1")
+        if as_grid(query.target_output) == trace.outcome.key:
+            raise IdentificationError(
+                f"the target equals the factual outcome of {query.on}; "
+                f"the counterfactual would be the factual world"
+            )
+        return IdentifiedQuery(rep, query, "contrastive")
     raise IdentificationError(f"unknown query type {type(query).__name__}")
 
 
@@ -217,6 +267,7 @@ class CounterfactualItem:
 class CounterfactualSet:
     identified: IdentifiedQuery
     items: tuple[CounterfactualItem, ...]
+    responsibility: dict[int, float] | None = None  # per-step, contrastive mode only
 
     def __str__(self) -> str:
         return "\n".join(item.narrative for item in self.items)
@@ -243,9 +294,47 @@ def compute(identified: IdentifiedQuery, backend: str = "cf.twinworld") -> Count
         cf = backtrack(solution, trace, query.edited_input)
         m = _metrics.evaluate(solution, cf)
         items.append(CounterfactualItem(cf, m, _narrate("train[0]", cf, m)))
+    elif isinstance(query, Contrastive):
+        return _contrast(identified)
     else:
         items.append(_resegment(rep, query.abstraction))
     return CounterfactualSet(identified, tuple(items))
+
+
+def _contrast(identified: IdentifiedQuery) -> CounterfactualSet:
+    """Why X rather than Y: certified minimal program edits reaching the foil."""
+    rep, query = identified.rep, identified.query
+    trace = _resolve_trace(rep, query.on)
+    pool = list(dict.fromkeys([*induce_rules(rep.task, rep.abstraction), *rep.primitives]))
+    k, cfs = minimal_edits(
+        rep.solution, trace, query.target_output, pool, k_max=query.k_max
+    )
+    if not cfs:
+        cf = Counterfactual("contrastive", trace, None, 0, trace.mechanisms)
+        m = _metrics.evaluate(rep.solution, cf)
+        narrative = (
+            f"{query.on}: no program within {query.k_max} edit(s) over {len(pool)} "
+            f"mechanisms produces the target — the factual outcome is robust "
+            f"against this foil (certified)."
+        )
+        return CounterfactualSet(identified, (CounterfactualItem(cf, m, narrative),))
+    items = []
+    for cf in cfs:
+        m = _metrics.evaluate(rep.solution, cf)
+        edits = sorted(_metrics.edited_steps(cf))
+        edit_desc = "; ".join(f"step {t} -> [{cf.program[t]}]" for t in edits)
+        items.append(
+            CounterfactualItem(
+                cf,
+                m,
+                f"{query.on}: the outcome is the factual one rather than the target "
+                f"because of step(s) {edits}; the smallest change producing the "
+                f"target is {edit_desc} (k={k}, certified minimal).",
+            )
+        )
+    return CounterfactualSet(
+        identified, tuple(items), _metrics.responsibility_profile(cfs)
+    )
 
 
 def _resegment(rep: CausalRepresentation, alt_abstraction: str) -> CounterfactualItem:

@@ -100,6 +100,24 @@ if shifted is not None:
     for a, b in zip(fo, co):
         print(f"    {line(a)}            {line(b)}")
 
+# --------------------------------------------- contrastive: why not that?
+rule("contrastive  —  why this outcome and not that one?")
+factual_out = sol.test_traces[0].outcome
+azure = dowhat.Recolor(2, 8).apply(factual_out)  # foil: moved but still azure
+print("\nfoil A: the shape moves down but KEEPS its azure colour (8)\n")
+cfs = dowhat.compute(dowhat.identify(rep, dowhat.Contrastive(azure.grid, on="test[0]")))
+for item in cfs.items[:3]:
+    print(item.narrative)
+if len(cfs.items) > 3:
+    print(f"(... {len(cfs.items) - 3} more minimal counterfactuals)")
+print(f"\nresponsibility profile (Chockler-Halpern): {cfs.responsibility}")
+
+extra = [list(r) for r in factual_out.grid]
+extra[0][0] = 2  # foil: same outcome plus one impossible extra pixel
+print("\nfoil B: the same outcome plus one extra red pixel at (0,0)\n")
+cfs_b = dowhat.compute(dowhat.identify(rep, dowhat.Contrastive(as_grid(extra), on="test[0]")))
+print(cfs_b.items[0].narrative)
+
 # --------------------------------------- counterfactual re-segmentation
 rule("re-segmentation  —  what if the objects had been carved differently?")
 print(f"\nchosen abstraction: [{rep.abstraction}]; "

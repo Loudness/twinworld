@@ -22,7 +22,22 @@ report = dowhat.refute(rep)                   # placebo-intervention battery
 
 # segmentation is a recorded, revisable decision — so it is intervenable too:
 dowhat.compute(dowhat.identify(rep, dowhat.Representational("mcc")))
+
+# contrastive: why this outcome and not that one? Answered by the smallest
+# program-edit set reaching the foil — CERTIFIED minimal (search is exhaustive
+# per k) — or by a certificate that the foil is unreachable, with a
+# Chockler-Halpern responsibility profile over the program's steps.
+cfs = dowhat.compute(dowhat.identify(rep, dowhat.Contrastive(foil_grid, on="test[0]")))
+cfs.responsibility  # e.g. {0: 0.5, 1: 0.5}
 ```
+
+Because the domain is deterministic, counterfactual claims here are **certificates,
+not estimates** — validated on a generated benchmark whose latent programs are
+known by construction (100% recovery, minimality gap 0). And programs that fit
+the demonstrations but are not behaviourally unique are detected *before* the
+test pair is consulted: `dowhat.discriminate.diagnose` groups all fitting
+programs into counterfactual-probe equivalence classes and exhibits the probe
+on which they part ways.
 
 Three abstraction schemes ship today (`cc4`, `cc8`, `mcc` — colour-blind composites);
 on the 1000-task ARC training corpus no single scheme explains more than 22.5% of
