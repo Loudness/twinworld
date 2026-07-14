@@ -2,12 +2,21 @@ import pytest
 from conftest import T
 
 import dowhat
-from dowhat import Backtracking, IdentificationError, Interventional, Recolor
+from dowhat import (
+    Backtracking,
+    ByColour,
+    IdentificationError,
+    Interventional,
+    ObjectRule,
+    Recolor,
+    RecolourTo,
+)
 
 
 def test_end_to_end_pipeline(recolor_task):
     rep = dowhat.model(recolor_task, max_depth=1)
-    assert rep.solution.program == (Recolor(3, 4),)
+    assert rep.solution.program == (ObjectRule(ByColour(3), RecolourTo(4)),)
+    assert rep.solution.strategy == "analogy"
 
     identified = dowhat.identify(rep, Interventional(step=0, alternative=Recolor(3, 9)))
     cfs = dowhat.compute(identified)
@@ -26,9 +35,9 @@ def test_golden_contrastive_narrative(recolor_task):
     cfs = dowhat.compute(dowhat.identify(rep, Interventional(0, Recolor(3, 9))))
     text = cfs.items[0].narrative
     assert text == (
-        "train[0]: at step 0 the solver applied [recolor(3->4)] rather than "
-        "[recolor(3->9)]; had it chosen [recolor(3->9)], the task would NO LONGER "
-        "be solved (sparsity 1 edit, outcome proximity 1)."
+        "train[0]: at step 0 the solver applied [recolour colour-3 objects to 4] "
+        "rather than [recolor(3->9)]; had it chosen [recolor(3->9)], the task would "
+        "NO LONGER be solved (sparsity 1 edit, outcome proximity 1)."
     )
 
 
@@ -40,8 +49,9 @@ def test_identify_rejects_out_of_range_step(recolor_task):
 
 def test_identify_rejects_factual_alternative(recolor_task):
     rep = dowhat.model(recolor_task, max_depth=1)
+    factual = rep.solution.program[0]
     with pytest.raises(IdentificationError, match="factual"):
-        dowhat.identify(rep, Interventional(step=0, alternative=Recolor(3, 4)))
+        dowhat.identify(rep, Interventional(step=0, alternative=factual))
 
 
 def test_identify_rejects_dimension_change(recolor_task):

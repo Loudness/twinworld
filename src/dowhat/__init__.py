@@ -14,8 +14,23 @@ from .api import (
     model,
     refute,
 )
+from .analogy import content_vector, induce_rules, retrieve, structure_map
 from .engine import Counterfactual, Solution, Task, Trace, UnsolvedTaskError, solve
-from .mechanisms import Identity, Mechanism, Recolor, Translate, candidate_primitives
+from .mechanisms import (
+    All,
+    ByColour,
+    Delete,
+    Identity,
+    Largest,
+    Mechanism,
+    ObjectRule,
+    Recolor,
+    RecolourTo,
+    Smallest,
+    Translate,
+    TranslateBy,
+    candidate_primitives,
+)
 from .metrics import MetricVector, evaluate, proximity, sparsity, validity
 from .refute import RefutationReport
 from .representation import Grid, Obj, StateGraph, as_grid, match_objects, parse_grid
@@ -23,13 +38,25 @@ from .representation import Grid, Obj, StateGraph, as_grid, match_objects, parse
 __version__ = "0.0.1"
 
 __all__ = [
+    "All",
     "Backtracking",
+    "ByColour",
     "CausalRepresentation",
     "Counterfactual",
     "CounterfactualSet",
     "DEFAULT_ABSTRACTIONS",
+    "Delete",
     "Grid",
+    "Largest",
+    "ObjectRule",
+    "RecolourTo",
     "Representational",
+    "Smallest",
+    "TranslateBy",
+    "content_vector",
+    "induce_rules",
+    "retrieve",
+    "structure_map",
     "IdentificationError",
     "IdentifiedQuery",
     "Identity",

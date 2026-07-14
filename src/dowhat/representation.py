@@ -234,24 +234,26 @@ def parse_grid(grid: Grid, abstraction: str = "cc4", background: int | None = No
     return StateGraph(len(grid), len(grid[0]), bg, objects, abstraction)
 
 
+def attribute_score(x: Obj, y: Obj) -> float:
+    """Property-level similarity of two objects: shared shape, colour,
+    location, and cell overlap (IoU). Used for identity matching and as the
+    local-match score inside structure mapping."""
+    s = 0.0
+    s += 4 if x.shape == y.shape else 0
+    s += 2 if x.colour == y.colour else 0
+    s += 1 if x.location == y.location else 0
+    s += 3 * len(x.cells & y.cells) / len(x.cells | y.cells)
+    return s
+
+
 def match_objects(a: StateGraph, b: StateGraph) -> list[tuple[Obj | None, Obj | None]]:
     """Greedy persistent-identity matching between two states.
 
-    Pairs are scored by shared shape, colour, location, and cell overlap (IoU);
-    each object is used at most once. Unmatched objects pair with None
-    (appeared / disappeared).
+    Pairs are scored by :func:`attribute_score`; each object is used at most
+    once. Unmatched objects pair with None (appeared / disappeared).
     """
-
-    def score(x: Obj, y: Obj) -> float:
-        s = 0.0
-        s += 4 if x.shape == y.shape else 0
-        s += 2 if x.colour == y.colour else 0
-        s += 1 if x.location == y.location else 0
-        s += 3 * len(x.cells & y.cells) / len(x.cells | y.cells)
-        return s
-
     candidates = sorted(
-        ((score(x, y), x.oid, y.oid, x, y) for x in a.objects for y in b.objects),
+        ((attribute_score(x, y), x.oid, y.oid, x, y) for x in a.objects for y in b.objects),
         key=lambda t: (-t[0], t[1], t[2]),
     )
     used_a: set[int] = set()

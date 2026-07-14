@@ -40,6 +40,7 @@ rep = dowhat.model(task, max_depth=2)
 sol = rep.solution
 
 print(f"\ninduced program : {' ; '.join(map(str, sol.program))}")
+print(f"strategy        : {sol.strategy}")
 print(f"programs tried  : {sol.programs_tried}")
 print(f"trajectory DAG  : {sol.dag.number_of_nodes()} states, "
       f"{sol.dag.number_of_edges()} transitions recorded")
@@ -68,11 +69,13 @@ if cf_test.counterfactual.applicable:
 rule("necessity analysis  —  does ANY alternative preserve success?")
 for step in range(len(sol.program)):
     valid_alts = []
+    tested = 0
     for prim in rep.primitives:
         try:
             identified = dowhat.identify(rep, Interventional(step=step, alternative=prim))
         except IdentificationError:
             continue  # the factual mechanism itself
+        tested += 1
         result = dowhat.compute(identified)
         if result.items[0].metrics.validity:
             valid_alts.append(prim)
@@ -82,7 +85,7 @@ for step in range(len(sol.program)):
         else f"replaceable by: {', '.join(map(str, valid_alts))}"
     )
     print(f"\nstep {step} [{sol.program[step]}]: tested "
-          f"{len(rep.primitives) - 1} alternatives -> {verdict}")
+          f"{tested} alternatives -> {verdict}")
 
 # --------------------------------------------- backtracking counterfactual
 rule("backtracking  —  what if the input itself had differed?")

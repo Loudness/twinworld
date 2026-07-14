@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Sequence
 
 from . import metrics as _metrics
+from .analogy import induce_rules
 from .engine import Counterfactual, Solution, Task, UnsolvedTaskError, backtrack, intervene, solve
 from .mechanisms import Mechanism, candidate_primitives
 from .refute import RefutationReport, refutation_battery
@@ -40,6 +41,39 @@ class CausalRepresentation:
     solutions: dict[str, Solution] = field(default_factory=dict)
     failures: dict[str, str] = field(default_factory=dict)
     max_depth: int = 2
+    induction: str = "auto"
+    analogy_depth: int = 3
+
+
+def _fit_abstraction(
+    task: Task,
+    abstraction: str,
+    blind: Sequence[Mechanism],
+    max_depth: int,
+    induction: str,
+    analogy_depth: int,
+) -> Solution:
+    """Fit one abstraction: analogy-proposed rules first, blind enumeration after.
+
+    Analogy narrows the candidate set enough that deeper search (analogy_depth)
+    stays cheap — the Chollet-efficiency argument in code.
+    """
+    analogy_error: str | None = None
+    if induction in ("auto", "always"):
+        candidates = induce_rules(task, abstraction)
+        if candidates:
+            try:
+                return solve(
+                    task, candidates, max_depth=analogy_depth,
+                    abstraction=abstraction, strategy="analogy",
+                )
+            except UnsolvedTaskError as err:
+                analogy_error = str(err)
+        else:
+            analogy_error = "analogy induced no candidate rules"
+        if induction == "always":
+            raise UnsolvedTaskError(analogy_error)
+    return solve(task, blind, max_depth=max_depth, abstraction=abstraction)
 
 
 def model(
@@ -47,14 +81,18 @@ def model(
     abstractions: Sequence[str] = DEFAULT_ABSTRACTIONS,
     primitives: Sequence[Mechanism] | None = None,
     max_depth: int = 2,
+    induction: str = "auto",
+    analogy_depth: int = 3,
 ) -> CausalRepresentation:
     """Parse the task into object graphs, induce the program, record the DAG.
 
     ``fit`` here is program induction from 2–5 deterministic demonstrations,
     not statistical estimation — the deliberate inversion of DoWhy's setting.
-    The task is fitted under every listed abstraction; the shortest program
-    wins (ties break to abstraction order), and the abstraction choice itself
-    is recorded as a revisable modelling decision.
+    Per abstraction, analogy-induced object rules are tried first (``induction``:
+    "auto" falls back to blind enumeration, "always" never falls back, "never"
+    skips analogy); the shortest program across abstractions wins (ties break
+    to abstraction order), and both the abstraction choice and the strategy
+    that produced the program are recorded as revisable modelling decisions.
     """
     if primitives is None:
         primitives = candidate_primitives(
@@ -64,21 +102,22 @@ def model(
     failures: dict[str, str] = {}
     for abstraction in abstractions:
         try:
-            solutions[abstraction] = solve(
-                task, primitives, max_depth=max_depth, abstraction=abstraction
+            solutions[abstraction] = _fit_abstraction(
+                task, abstraction, primitives, max_depth, induction, analogy_depth
             )
         except UnsolvedTaskError as err:
             failures[abstraction] = str(err)
     if not solutions:
         raise UnsolvedTaskError(
-            f"task {task.task_id}: no program of depth <= {max_depth} exists under "
-            f"any abstraction in {tuple(abstractions)}"
+            f"task {task.task_id}: no program exists under any abstraction "
+            f"in {tuple(abstractions)} (max_depth={max_depth}, analogy_depth={analogy_depth})"
         )
     chosen = min(
         solutions, key=lambda a: (len(solutions[a].program), list(abstractions).index(a))
     )
     return CausalRepresentation(
-        task, chosen, tuple(primitives), solutions[chosen], solutions, failures, max_depth
+        task, chosen, tuple(primitives), solutions[chosen], solutions, failures,
+        max_depth, induction, analogy_depth,
     )
 
 
@@ -218,8 +257,9 @@ def _resegment(rep: CausalRepresentation, alt_abstraction: str) -> Counterfactua
     alt = rep.solutions.get(alt_abstraction)
     if alt is None and alt_abstraction not in rep.failures:
         try:
-            alt = solve(
-                rep.task, rep.primitives, max_depth=rep.max_depth, abstraction=alt_abstraction
+            alt = _fit_abstraction(
+                rep.task, alt_abstraction, rep.primitives,
+                rep.max_depth, rep.induction, rep.analogy_depth,
             )
             rep.solutions[alt_abstraction] = alt
         except UnsolvedTaskError as err:

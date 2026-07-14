@@ -102,6 +102,7 @@ class Solution:
     test_traces: tuple[Trace, ...]
     cache: ApplyCache
     programs_tried: int = 0
+    strategy: str = "enumerate"  # "enumerate" (blind) | "analogy" (induced rules)
 
     @property
     def dag(self) -> nx.DiGraph:
@@ -118,6 +119,7 @@ def solve(
     primitives: Sequence[Mechanism],
     max_depth: int = 2,
     abstraction: str = "cc4",
+    strategy: str = "enumerate",
 ) -> Solution:
     """Breadth-first program induction: the shortest program mapping every train
     input to its train output, verified (not fitted) on the test pair(s).
@@ -143,7 +145,7 @@ def solve(
                     for i, _ in task.test
                     if (t := cache.run(parse_grid(i, abstraction), program)) is not None
                 )
-                return Solution(task, program, tuple(traces), test_traces, cache, tried)
+                return Solution(task, program, tuple(traces), test_traces, cache, tried, strategy)
     raise UnsolvedTaskError(
         f"no program of depth <= {max_depth} over {len(primitives)} primitives "
         f"solves task {task.task_id} ({tried} programs tried)"

@@ -29,6 +29,14 @@ on the 1000-task ARC training corpus no single scheme explains more than 22.5% o
 tasks as pure object transformations, but the union reaches 32.6% — plural,
 revisable segmentation is load-bearing, not a luxury.
 
+Search is analogy-first: SME-style structure mapping between each train pair's
+object graphs yields per-object deltas, deltas generalize across pairs into
+candidate object rules (selector + transform), and the engine merely *verifies*
+them — analogy proposes, search disposes. On tasks it solves, the analogy path
+tries a median of ~1 program where blind enumeration tried hundreds, and
+train-fitting programs that fail the held-out test are reported as
+*underdetermined*, not solved — that gap is a research target, not noise.
+
 Research grounding and full citations: [docs/research-digest.md](docs/research-digest.md).
 
 ## Development

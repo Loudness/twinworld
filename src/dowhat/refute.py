@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .engine import Solution, backtrack
-from .mechanisms import Recolor, Translate
+from .mechanisms import ByColour, ObjectRule, Recolor, RecolourTo, Translate
 from .representation import Obj, StateGraph, as_grid
 
 
@@ -45,6 +45,14 @@ def referenced_colours(solution: Solution) -> set[int]:
             if mech.colour is None:
                 return set(range(10))  # moves everything: no colour is irrelevant
             refs.add(mech.colour)
+        elif isinstance(mech, ObjectRule):
+            if not isinstance(mech.selector, ByColour):
+                return set(range(10))  # All/Largest/Smallest may touch anything
+            refs.add(mech.selector.colour)
+            if isinstance(mech.transform, RecolourTo):
+                refs.add(mech.transform.colour)
+        else:
+            return set(range(10))  # unknown mechanism: assume nothing is irrelevant
     return refs
 
 

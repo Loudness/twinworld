@@ -141,6 +141,136 @@ class Translate:
         return f"translate({target} by {self.dr},{self.dc})"
 
 
+# --------------------------------------------------------------------------
+# Object-level rules (thesis Experiment 2): a selector picks objects, a
+# transform rewrites each. Rules are ordinary Mechanisms, so the engine,
+# counterfactuals, metrics and refuters work on them unchanged.
+
+
+@dataclass(frozen=True)
+class All:
+    def select(self, objects: tuple[Obj, ...]) -> tuple[Obj, ...]:
+        return tuple(objects)
+
+    def __str__(self) -> str:
+        return "all objects"
+
+
+@dataclass(frozen=True)
+class ByColour:
+    colour: int
+
+    def select(self, objects: tuple[Obj, ...]) -> tuple[Obj, ...]:
+        return tuple(o for o in objects if o.colour == self.colour)
+
+    def __str__(self) -> str:
+        return f"colour-{self.colour} objects"
+
+
+@dataclass(frozen=True)
+class Largest:
+    def select(self, objects: tuple[Obj, ...]) -> tuple[Obj, ...]:
+        if not objects:
+            return ()
+        top = max(o.size for o in objects)
+        return tuple(o for o in objects if o.size == top)
+
+    def __str__(self) -> str:
+        return "largest object(s)"
+
+
+@dataclass(frozen=True)
+class Smallest:
+    def select(self, objects: tuple[Obj, ...]) -> tuple[Obj, ...]:
+        if not objects:
+            return ()
+        low = min(o.size for o in objects)
+        return tuple(o for o in objects if o.size == low)
+
+    def __str__(self) -> str:
+        return "smallest object(s)"
+
+
+Selector = All | ByColour | Largest | Smallest
+
+
+@dataclass(frozen=True)
+class TranslateBy:
+    dr: int
+    dc: int
+
+    def transform(self, o: Obj) -> Obj | None:
+        return Obj(o.oid, frozenset((r + self.dr, c + self.dc, col) for r, c, col in o.pixels))
+
+    def __str__(self) -> str:
+        return f"move %s by ({self.dr},{self.dc})"
+
+
+@dataclass(frozen=True)
+class RecolourTo:
+    colour: int
+
+    def transform(self, o: Obj) -> Obj | None:
+        return Obj(o.oid, frozenset((r, c, self.colour) for r, c, _ in o.pixels))
+
+    def __str__(self) -> str:
+        return f"recolour %s to {self.colour}"
+
+
+@dataclass(frozen=True)
+class Delete:
+    def transform(self, o: Obj) -> Obj | None:
+        return None
+
+    def __str__(self) -> str:
+        return "delete %s"
+
+
+ObjectTransform = TranslateBy | RecolourTo | Delete
+
+
+@dataclass(frozen=True)
+class ObjectRule:
+    """Apply ``transform`` to every object picked by ``selector``."""
+
+    selector: Selector
+    transform: ObjectTransform
+
+    @property
+    def exact_preimage(self) -> bool:
+        return isinstance(self.transform, TranslateBy)
+
+    def apply(self, s: StateGraph) -> StateGraph | None:
+        selected = set(self.selector.select(s.objects))
+        if not selected:
+            return None
+        objects: list[Obj] = []
+        for o in s.objects:
+            if o in selected:
+                t = self.transform.transform(o)
+                if t is not None:
+                    objects.append(t)
+            else:
+                objects.append(o)
+        out = _rebuild(s, objects)
+        if out is None or out == s:
+            return None  # no-op applications are inapplicable, not silent identities
+        return out
+
+    def preimage(self, s: StateGraph) -> Iterator[StateGraph]:
+        # Exact only for translations: the selector re-selects the same objects
+        # (colour and size are translation-invariant), so undoing is sound.
+        if not isinstance(self.transform, TranslateBy):
+            return
+        inverse = ObjectRule(self.selector, TranslateBy(-self.transform.dr, -self.transform.dc))
+        pre = inverse.apply(s)
+        if pre is not None and self.apply(pre) == s:
+            yield pre
+
+    def __str__(self) -> str:
+        return str(self.transform) % str(self.selector)
+
+
 def candidate_primitives(
     colours: set[int], background: int, max_shift: int = 3
 ) -> list[Mechanism]:
