@@ -104,6 +104,29 @@ train-fitting programs that fail the held-out test are reported as
 
 Research grounding and full citations: [docs/research-digest.md](docs/research-digest.md).
 
+## Visualization
+
+Every stage of the pipeline renders to a single self-contained HTML page (pure
+stdlib, zero dependencies): demonstrations with the held-out prediction,
+plural segmentations with object outlines, state-by-state solving traces,
+per-step interventional forks with diff-marked outcomes, pertinent negatives,
+counterfactual re-segmentation, the confidence gate and the refutation battery.
+
+```bash
+python examples/visual_report.py a79310a0 --open   # write + open one report
+python examples/visual_report.py --blocks --open   # blocks world, no arckit needed
+python -m dowhat.viz                               # browse ARC at http://127.0.0.1:8008
+                                                   # (tasks fit on first click, cached)
+```
+
+From code: `dowhat.viz.full_report(task) -> str` (pass `foil=` for a contrastive
+section), plus `save_report`, `show`, and the grid/state/trace renderers for
+composing custom pages. Works on any `Task`; only the corpus server needs the
+`arc` extra. Most ARC tasks are outside the current rule vocabulary — the index
+links known-fitting starters and marks fit status as you browse, and a no-fit
+page still shows the demonstrations and segmentations (the honest corpus rate,
+not an error).
+
 ## Development
 
 ```bash
