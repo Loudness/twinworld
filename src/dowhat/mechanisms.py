@@ -191,7 +191,21 @@ class Smallest:
         return "smallest object(s)"
 
 
-Selector = All | ByColour | Largest | Smallest
+@dataclass(frozen=True)
+class Not:
+    """Selector negation (thesis Experiment 4): the complement of ``inner``."""
+
+    inner: "Selector"
+
+    def select(self, objects: tuple[Obj, ...]) -> tuple[Obj, ...]:
+        excluded = set(self.inner.select(objects))
+        return tuple(o for o in objects if o not in excluded)
+
+    def __str__(self) -> str:
+        return f"objects other than {self.inner}"
+
+
+Selector = All | ByColour | Largest | Smallest | Not
 
 
 @dataclass(frozen=True)
@@ -258,14 +272,44 @@ class ObjectRule:
         return out
 
     def preimage(self, s: StateGraph) -> Iterator[StateGraph]:
-        # Exact only for translations: the selector re-selects the same objects
+        # Translations: exact — the selector re-selects the same objects
         # (colour and size are translation-invariant), so undoing is sound.
-        if not isinstance(self.transform, TranslateBy):
+        if isinstance(self.transform, TranslateBy):
+            inverse = ObjectRule(
+                self.selector, TranslateBy(-self.transform.dr, -self.transform.dc)
+            )
+            pre = inverse.apply(s)
+            if pre is not None and self.apply(pre) == s:
+                yield pre
             return
-        inverse = ObjectRule(self.selector, TranslateBy(-self.transform.dr, -self.transform.dc))
-        pre = inverse.apply(s)
-        if pre is not None and self.apply(pre) == s:
-            yield pre
+        # RecolourTo: bounded abduction — flip subsets of uniformly-target
+        # objects back to candidate original colours (a ByColour selector pins
+        # the colour; otherwise all colours are candidates, one shared colour
+        # per flip set), each candidate verified by re-application.
+        if isinstance(self.transform, RecolourTo):
+            target = self.transform.colour
+            uniform = [o for o in s.objects if o.colours == frozenset({target})][:6]
+            if isinstance(self.selector, ByColour):
+                originals = [self.selector.colour]
+            elif isinstance(self.selector, Not) and isinstance(self.selector.inner, ByColour):
+                originals = [
+                    c for c in range(10) if c not in (self.selector.inner.colour, target)
+                ]
+            else:
+                originals = [c for c in range(10) if c != target]
+            for k in range(1, len(uniform) + 1):
+                for flipped in combinations(uniform, k):
+                    kept = [o for o in s.objects if o not in flipped]
+                    for colour in originals:
+                        back = [Obj.solid(o.oid, colour, o.cells) for o in flipped]
+                        pre = _rebuild(s, kept + back)
+                        if pre is not None and self.apply(pre) == s:
+                            yield pre
+            return
+        # Delete: preimages would require a hypothesis space over what was
+        # deleted (an unbounded object catalogue) — deliberately not
+        # enumerated; abduction through deletion is future work.
+        return
 
     def __str__(self) -> str:
         return str(self.transform) % str(self.selector)

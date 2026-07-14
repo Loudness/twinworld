@@ -118,6 +118,15 @@ print("\nfoil B: the same outcome plus one extra red pixel at (0,0)\n")
 cfs_b = dowhat.compute(dowhat.identify(rep, dowhat.Contrastive(as_grid(extra), on="test[0]")))
 print(cfs_b.items[0].narrative)
 
+# ----------------------------------------- pertinent negatives (Experiment 4)
+rule("pertinent negatives  —  what ABSENCE is load-bearing?")
+pn = dowhat.compute(dowhat.identify(rep, dowhat.PertinentNegative(on="test[0]", max_cells=1)))
+print()
+for item in pn.items[:3]:
+    print(item.narrative)
+if len(pn.items) > 3:
+    print(f"(... {len(pn.items) - 3} more witnesses)")
+
 # --------------------------------------- counterfactual re-segmentation
 rule("re-segmentation  —  what if the objects had been carved differently?")
 print(f"\nchosen abstraction: [{rep.abstraction}]; "

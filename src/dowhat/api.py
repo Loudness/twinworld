@@ -69,6 +69,11 @@ def _fit_abstraction(
     Analogy narrows the candidate set enough that deeper search (analogy_depth)
     stays cheap — the Chollet-efficiency argument in code.
     """
+    if induction == "asp":
+        from .asp_solver import asp_solve, solution_from_asp
+
+        result = asp_solve(task, abstraction=abstraction, max_depth=analogy_depth)
+        return solution_from_asp(task, abstraction, result)
     analogy_error: str | None = None
     if induction in ("auto", "always"):
         candidates = induce_rules(task, abstraction)
@@ -175,7 +180,33 @@ class Contrastive:
     k_max: int = 2
 
 
-Query = Interventional | Backtracking | Representational | Contrastive
+@dataclass(frozen=True)
+class PertinentNegative:
+    """What must be ABSENT from the input for the outcome to be what it is?
+
+    CEM's pertinent negatives (Dhurandhar et al. 2018), transplanted from
+    classifiers to solving traces: new, separated objects are added to the
+    input in increasing footprint; an addition is a witness when some
+    ORIGINAL object's outcome image changes or the program stops applying —
+    the added object's own image is allowed to appear or move inertly.
+    """
+
+    on: str = "train[0]"
+    max_cells: int = 3
+    max_witnesses: int = 6
+    # separated=True keeps additions halo-distant from existing objects — the
+    # right default for ARC, where a same-colour neighbour silently fuses into
+    # an object. In domains where adjacency is meaningful and the palette is
+    # distinct (e.g. blocks world: "what if a block sat ON TOP of this one?"),
+    # pass separated=False to probe contact.
+    separated: bool = True
+    # colours=None probes the task palette plus one fresh colour; pass an
+    # explicit tuple to restrict (e.g. only a fresh colour, when palette
+    # duplicates would trip uniqueness preconditions everywhere).
+    colours: tuple[int, ...] | None = None
+
+
+Query = Interventional | Backtracking | Representational | Contrastive | PertinentNegative
 
 
 class IdentificationError(Exception):
@@ -250,6 +281,11 @@ def identify(rep: CausalRepresentation, query: Query) -> IdentifiedQuery:
                 f"the counterfactual would be the factual world"
             )
         return IdentifiedQuery(rep, query, "contrastive")
+    if isinstance(query, PertinentNegative):
+        _resolve_trace(rep, query.on)
+        if query.max_cells < 1:
+            raise IdentificationError("max_cells must be at least 1")
+        return IdentifiedQuery(rep, query, "pertinent_negative")
     raise IdentificationError(f"unknown query type {type(query).__name__}")
 
 
@@ -296,9 +332,109 @@ def compute(identified: IdentifiedQuery, backend: str = "cf.twinworld") -> Count
         items.append(CounterfactualItem(cf, m, _narrate("train[0]", cf, m)))
     elif isinstance(query, Contrastive):
         return _contrast(identified)
+    elif isinstance(query, PertinentNegative):
+        return _pertinent(identified)
     else:
         items.append(_resegment(rep, query.abstraction))
     return CounterfactualSet(identified, tuple(items))
+
+
+_ADDITION_SHAPES: dict[int, tuple[tuple[tuple[int, int], ...], ...]] = {
+    1: (((0, 0),),),
+    2: (((0, 0), (0, 1)), ((0, 0), (1, 0))),
+    3: (((0, 0), (0, 1), (0, 2)), ((0, 0), (1, 0), (2, 0))),
+}
+
+
+def _pertinent(identified: IdentifiedQuery) -> CounterfactualSet:
+    """Enumerate separated additions by footprint; report certified-minimal
+    witnesses within the declared catalogue, or a bounded robustness certificate."""
+    rep, query = identified.rep, identified.query
+    trace = _resolve_trace(rep, query.on)
+    state = trace.states[0]
+    grid, background = state.grid, state.background
+    h, w = state.height, state.width
+    occupied = {cell for o in state.objects for cell in o.cells}
+    excluded = occupied
+    if query.separated:
+        excluded = {
+            (r + dr, c + dc)
+            for r, c in occupied
+            for dr in (-1, 0, 1)
+            for dc in (-1, 0, 1)
+        }
+    free = {
+        (r, c)
+        for r in range(h)
+        for c in range(w)
+        if (r, c) not in excluded and grid[r][c] == background
+    }
+    anchors = sorted(free)[:80]
+    if query.colours is not None:
+        colours = list(query.colours)
+    else:
+        palette = sorted(rep.task.colours() - {background})
+        fresh = next((c for c in range(9, -1, -1) if c not in rep.task.colours()), None)
+        colours = palette + ([fresh] if fresh is not None else [])
+
+    for size in range(1, min(query.max_cells, max(_ADDITION_SHAPES)) + 1):
+        witnesses: list[tuple[list, int, Counterfactual, str]] = []
+        for anchor_r, anchor_c in anchors:
+            if len(witnesses) >= query.max_witnesses:
+                break
+            for shape in _ADDITION_SHAPES[size]:
+                cells = [(anchor_r + r, anchor_c + c) for r, c in shape]
+                if not all(cell in free for cell in cells):
+                    continue
+                hit = None
+                for colour in colours:
+                    rows = [list(row) for row in grid]
+                    for r, c in cells:
+                        rows[r][c] = colour
+                    cf_run = backtrack(rep.solution, trace, as_grid(rows))
+                    pertinent, detail = _absence_matters(trace, cf_run)
+                    if pertinent:
+                        hit = (colour, cf_run, detail)
+                        break
+                if hit is not None:
+                    colour, cf_run, detail = hit
+                    cf = Counterfactual(
+                        "pertinent_negative", trace, cf_run.counterfactual, 0, trace.mechanisms
+                    )
+                    witnesses.append((cells, colour, cf, detail))
+                    break  # one witness per anchor is plenty
+        if witnesses:
+            items = []
+            for cells, colour, cf, detail in witnesses:
+                m = _metrics.evaluate(rep.solution, cf)
+                items.append(
+                    CounterfactualItem(
+                        cf,
+                        m,
+                        f"{query.on}: had a colour-{colour} object occupied {cells}, "
+                        f"{detail} — its absence is load-bearing ({size}-cell addition; "
+                        f"minimal within the catalogue, certified).",
+                    )
+                )
+            return CounterfactualSet(identified, tuple(items))
+    cf = Counterfactual("pertinent_negative", trace, None, 0, trace.mechanisms)
+    m = _metrics.evaluate(rep.solution, cf)
+    narrative = (
+        f"{query.on}: no added separated object of up to {query.max_cells} cell(s) in "
+        f"{len(colours)} colour(s) changes any original object's outcome — within this "
+        f"catalogue, the outcome depends on no absence (bounded certificate)."
+    )
+    return CounterfactualSet(identified, (CounterfactualItem(cf, m, narrative),))
+
+
+def _absence_matters(trace: Trace, cf_run: Counterfactual) -> tuple[bool, str]:
+    if not cf_run.applicable:
+        return True, "the program would no longer apply"
+    factual_images = {o.pixels for o in trace.outcome.objects}
+    cf_images = {o.pixels for o in cf_run.counterfactual.outcome.objects}
+    if factual_images - cf_images:
+        return True, "an original object's outcome would change"
+    return False, ""
 
 
 def _contrast(identified: IdentifiedQuery) -> CounterfactualSet:
@@ -419,3 +555,79 @@ def _narrate(label: str, cf: Counterfactual, m: _metrics.MetricVector) -> str:
 def refute(rep: CausalRepresentation) -> RefutationReport:
     """Attack the induced explanation; passing is necessary, not sufficient."""
     return refutation_battery(rep.solution)
+
+
+# ------------------------------------------------------ 5. assess / predict
+
+
+@dataclass(frozen=True)
+class ConfidenceReport:
+    """The solver's own epistemic state, derived counterfactually.
+
+    Hypotheses = every program over the solver's induced candidate language
+    (plus the found program's mechanisms) that fits the demonstrations,
+    grouped into behavioural classes by counterfactual probes. Confidence is
+    HIGH when one class exists, or when all classes agree on the test
+    input(s) — unanimity despite ambiguity; LOW otherwise, carrying the
+    per-class predictions and the probe on which the hypotheses part ways.
+    """
+
+    fits: tuple
+    classes: int
+    underdetermined: bool
+    unanimous_on_test: bool
+    confidence: str  # "high" | "low"
+    predictions: tuple  # one tuple of output grids (or None) per class
+    probe: Grid | None
+
+    def __str__(self) -> str:
+        return (
+            f"confidence {self.confidence.upper()}: {len(self.fits)} fitting program(s) "
+            f"in {self.classes} behavioural class(es); "
+            + (
+                "classes agree on the test input(s)"
+                if self.unanimous_on_test
+                else "classes DISAGREE on the test input(s)"
+                if self.underdetermined
+                else "the demonstrations determine the behaviour"
+            )
+        )
+
+
+def assess(rep: CausalRepresentation) -> ConfidenceReport:
+    """diagnose() as a confidence gate — the solver knows when it doesn't know."""
+    from .discriminate import diagnose
+    from .engine import ApplyCache, solve_all
+
+    pool = list(
+        dict.fromkeys([*induce_rules(rep.task, rep.abstraction), *rep.solution.program])
+    )
+    depth = max(1, len(rep.solution.program))
+    fits = solve_all(rep.task, pool, max_depth=depth, abstraction=rep.abstraction)
+    if tuple(rep.solution.program) not in fits:
+        fits = [tuple(rep.solution.program), *fits]
+    report = diagnose(rep.task, fits, rep.abstraction)
+    cache = ApplyCache()
+    test_inputs = [parse_grid(i, rep.abstraction) for i, _ in rep.task.test]
+    predictions = []
+    for cls in report.classes:
+        outs = tuple(
+            trace.outcome.key if (trace := cache.run(s, cls[0])) is not None else None
+            for s in test_inputs
+        )
+        predictions.append(outs)
+    unanimous = len(set(predictions)) == 1
+    confidence = "high" if (not report.underdetermined or unanimous) else "low"
+    return ConfidenceReport(
+        tuple(fits), len(report.classes), report.underdetermined,
+        unanimous, confidence, tuple(predictions), report.probe,
+    )
+
+
+def predict(rep: CausalRepresentation) -> tuple[tuple[Grid, ...] | None, ConfidenceReport]:
+    """Gated prediction: the test output(s) when confident, None (abstention)
+    with the full report — including every class's alternative — when not."""
+    report = assess(rep)
+    if report.confidence == "high":
+        return report.predictions[0], report
+    return None, report

@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .engine import Solution, backtrack
-from .mechanisms import ByColour, ObjectRule, Recolor, RecolourTo, Translate
+from .mechanisms import ByColour, Not, ObjectRule, Recolor, RecolourTo, Translate
 from .representation import Obj, StateGraph, as_grid
 
 
@@ -46,9 +46,13 @@ def referenced_colours(solution: Solution) -> set[int]:
                 return set(range(10))  # moves everything: no colour is irrelevant
             refs.add(mech.colour)
         elif isinstance(mech, ObjectRule):
-            if not isinstance(mech.selector, ByColour):
-                return set(range(10))  # All/Largest/Smallest may touch anything
-            refs.add(mech.selector.colour)
+            sel = mech.selector
+            if isinstance(sel, ByColour):
+                refs.add(sel.colour)
+            elif isinstance(sel, Not) and isinstance(sel.inner, ByColour):
+                refs |= set(range(10)) - {sel.inner.colour}  # touches all BUT c
+            else:
+                return set(range(10))  # All/Largest/Smallest/Not may touch anything
             if isinstance(mech.transform, RecolourTo):
                 refs.add(mech.transform.colour)
         else:
@@ -100,8 +104,18 @@ def placebo_intervention(solution: Solution) -> RefutationRow:
     )
 
 
+def asp_crosscheck(solution: Solution) -> RefutationRow:
+    """Independent logic-based validation: selector semantics re-derived by
+    clingo under negation-as-failure must match the Python implementation on
+    every reached state (thesis Experiment 4's 'extra path validation')."""
+    from .asp import crosscheck_selectors
+
+    passed, detail = crosscheck_selectors(solution)
+    return RefutationRow("asp_selector_crosscheck", passed, detail)
+
+
 def refutation_battery(solution: Solution) -> RefutationReport:
-    return RefutationReport((placebo_intervention(solution),))
+    return RefutationReport((placebo_intervention(solution), asp_crosscheck(solution)))
 
 
 def _recolour_cells(state: StateGraph, obj: Obj | None, colour: int):

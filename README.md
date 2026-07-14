@@ -39,6 +39,37 @@ test pair is consulted: `dowhat.discriminate.diagnose` groups all fitting
 programs into counterfactual-probe equivalence classes and exhibits the probe
 on which they part ways.
 
+The generality claim is substantiated, not asserted: `dowhat.domains.blocks`
+runs the identical core on **blocks world** — the canonical STRIPS planning
+domain — where the domain plugin supplies only a perception adapter and a
+`MoveBlock` primitive with real preconditions and gravity (the same move
+displaces a block differently in different states, provably inexpressible as
+a translation rule). Contrastive plan edits, pertinent negatives (clearance
+and landing-height presuppositions), necessity analysis, and determinism
+diagnosis all work unchanged (`examples/blocks_world.py`).
+
+Two further solving strategies complement analogy: `model(induction="asp")`
+hands the program search to **clingo** — choice rules over (selector,
+transform) steps with negation-as-failure in the search space, object
+dynamics as ASP rules, and every answer set verified through the exact
+engine (ASP proposes, the engine disposes; the solid/separated-object
+fragment is declared, and fragment mismatches are counted, never accepted).
+And `dowhat.assess` / `dowhat.predict` turn underdetermination diagnosis into
+a **confidence gate**: hypotheses that fit the demonstrations are grouped
+into behavioural classes and applied to the test input — one class (or
+unanimity) gates high, disagreement gates low and `predict` abstains with the
+alternatives. The gate never sees the test output.
+
+Negation runs through the library three ways (thesis Experiment 4): `Not(...)`
+selectors in the rule language ("recolour everything *except* the largest" —
+which solved an ARC task no positive selector could, at the measured cost of
+more underdetermined fits); `dowhat.PertinentNegative` — what must be minimally
+*absent* for the outcome to hold, answered with catalogue-bounded certificates
+(and doubling as a discriminator: fragile size-based hypotheses have absence
+dependencies that colour-based ones lack); and an optional ASP cross-check
+(`pip install dowhat[asp]`) where clingo re-derives every selector under
+negation-as-failure and must agree with the Python semantics.
+
 Three abstraction schemes ship today (`cc4`, `cc8`, `mcc` — colour-blind composites);
 on the 1000-task ARC training corpus no single scheme explains more than 22.5% of
 tasks as pure object transformations, but the union reaches 32.6% — plural,

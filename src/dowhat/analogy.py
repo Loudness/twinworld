@@ -27,6 +27,7 @@ from .mechanisms import (
     ByColour,
     Delete,
     Largest,
+    Not,
     ObjectRule,
     RecolourTo,
     Smallest,
@@ -168,7 +169,10 @@ def induce_rules(task: Task, abstraction: str = "cc4") -> list[ObjectRule]:
     by_obj = [{d.obj.oid: d for d in ds} for ds in all_deltas]
 
     shared_colours = set.intersection(*({o.colour for o in s.objects} for s in inputs))
-    selectors = [All(), *[ByColour(c) for c in sorted(shared_colours)], Largest(), Smallest()]
+    positive = [All(), *[ByColour(c) for c in sorted(shared_colours)], Largest(), Smallest()]
+    # Experiment 4: negation extends the language — "everything except ..."
+    negated = [Not(Largest()), Not(Smallest()), *[Not(ByColour(c)) for c in sorted(shared_colours)]]
+    selectors = positive + negated
 
     rules: list[ObjectRule] = []
     for sel in selectors:

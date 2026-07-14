@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 arc = ["arckit>=0.1"]
+asp = ["clingo>=5.6"]
 dev = ["pytest>=8", "ruff>=0.4"]
 
 [tool.setuptools.packages.find]

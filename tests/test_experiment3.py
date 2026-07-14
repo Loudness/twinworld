@@ -126,26 +126,33 @@ def ambiguous_task() -> Task:
     )
 
 
-def test_solve_all_finds_both_hypotheses(ambiguous_task):
+def test_solve_all_finds_the_competing_hypotheses(ambiguous_task):
     rules = induce_rules(ambiguous_task)
     fits = solve_all(ambiguous_task, rules, max_depth=1)
-    assert len(fits) == 2
+    # at least the colour-based and the size-based readings both fit
     assert (ObjectRule(ByColour(2), RecolourTo(5)),) in fits
+    assert (ObjectRule(dowhat.Largest(), RecolourTo(5)),) in fits
+    assert len(fits) >= 2
 
 
 def test_diagnose_separates_hypotheses_with_a_probe(ambiguous_task):
     fits = solve_all(ambiguous_task, induce_rules(ambiguous_task), max_depth=1)
     report = diagnose(ambiguous_task, fits)
     assert report.underdetermined
-    assert len(report.classes) == 2
+    assert len(report.classes) >= 2
     assert report.probe is not None
-    assert len(set(report.outputs)) == len(report.outputs)  # classes truly differ
+    assert report.outputs[0] != report.outputs[1]  # the probe truly separates them
 
 
-def test_diagnose_single_class_when_determined(recolor_task):
-    fits = solve_all(recolor_task, induce_rules(recolor_task), max_depth=1)
-    report = diagnose(recolor_task, fits)
-    assert not report.underdetermined
+def test_diagnose_single_class_when_determined(three_way_move_task):
+    # the three colour-specific moves admit only order permutations of one
+    # program — behaviourally a single class on every probe
+    fits = solve_all(
+        three_way_move_task, induce_rules(three_way_move_task), max_depth=3
+    )
+    assert len(fits) >= 2  # several orderings fit ...
+    report = diagnose(three_way_move_task, fits)
+    assert not report.underdetermined  # ... but they are one behaviour
     assert report.probe is None
 
 

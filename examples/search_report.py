@@ -7,7 +7,9 @@ enumeration is used as fallback only where its vocabulary stays tractable
 wall-clock — since Chollet's framing scores the efficiency of skill
 acquisition, not the skill itself.
 
-Usage: python examples/search_report.py [N_TASKS]
+Usage: python examples/search_report.py [N_TASKS] [--asp]
+       --asp uses the clingo program-induction solver (depth <= 2) instead of
+       the analogy-first strategy — completeness within the fragment vs speed.
 """
 
 import statistics
@@ -15,10 +17,12 @@ import sys
 import time
 
 from dowhat import UnsolvedTaskError, as_grid
-from dowhat.api import model
+from dowhat.api import assess, model
 from dowhat.domains.arc import iter_tasks
 
-limit = int(sys.argv[1]) if len(sys.argv) > 1 else None
+args = [a for a in sys.argv[1:] if not a.startswith("--")]
+limit = int(args[0]) if args else None
+use_asp = "--asp" in sys.argv
 
 
 def test_transfers(task, solution) -> bool:
@@ -38,25 +42,38 @@ for task in iter_tasks():
     if limit is not None and n >= limit:
         break
     n += 1
-    induction = "auto" if len(task.colours()) <= 6 else "always"
+    if use_asp:
+        induction = "asp"
+    else:
+        induction = "auto" if len(task.colours()) <= 6 else "always"
     t0 = time.perf_counter()
     try:
-        rep = model(task, induction=induction)
+        rep = model(task, induction=induction, analogy_depth=2 if use_asp else 3)
     except UnsolvedTaskError:
         continue
     ms = (time.perf_counter() - t0) * 1000
     sol = rep.solution
     transfers = test_transfers(task, sol)
+    gate = assess(rep).confidence
     rows.append((task.task_id, sol.strategy, rep.abstraction, len(sol.program),
-                 sol.programs_tried, ms, transfers))
+                 sol.programs_tried, ms, transfers, gate))
     print(f"  {'SOLVED  ' if transfers else 'TRAIN-FIT ONLY'} {task.task_id} "
           f"[{sol.strategy}/{rep.abstraction}] depth={len(sol.program)} "
-          f"tried={sol.programs_tried} {ms:.0f}ms: "
+          f"tried={sol.programs_tried} {ms:.0f}ms gate={gate}: "
           f"{' ; '.join(map(str, sol.program))}", flush=True)
 
 full = [r for r in rows if r[6]]
 print(f"\ntest-verified solved: {len(full)}/{n} tasks "
       f"(+{len(rows) - len(full)} train-fit only — underdetermined)")
+gate_table = {
+    (gate, ok): sum(1 for r in rows if r[7] == gate and r[6] == ok)
+    for gate in ("high", "low")
+    for ok in (True, False)
+}
+print("confidence gate     : "
+      f"high&correct {gate_table[('high', True)]}, high&wrong {gate_table[('high', False)]}, "
+      f"low&correct {gate_table[('low', True)]}, low&wrong {gate_table[('low', False)]} "
+      f"(the gate never sees the test output)")
 for strategy in ("analogy", "enumerate"):
     sub = [r for r in rows if r[1] == strategy]
     if sub:

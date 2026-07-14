@@ -9,18 +9,20 @@ from dowhat import ByColour, IdentificationError, ObjectRule, Representational, 
 
 @pytest.fixture
 def composite_task() -> Task:
-    """A 2-3 composite must move right as ONE thing while a 7 stays put.
+    """A 2-3 composite must move right as ONE thing while a 7 AND a 9 stay put.
 
     Only the colour-blind composite abstraction (mcc) sees the {2,3} pair as a
     single object, so only mcc solves this at depth 1: under cc4/cc8 the parts
-    are separate objects and moving the 2 collides with the 3.
+    are separate objects and moving the 2 collides with the 3. Two static
+    spectators of distinct colours keep negated selectors (e.g. 'everything
+    except colour 7') from smuggling in a cc4 solution.
     """
     return Task(
         train=(
-            (T("00000", "23000", "00007"), T("00000", "02300", "00007")),
-            (T("00000", "02300", "70000"), T("00000", "00230", "70000")),
+            (T("000000", "230000", "000907"), T("000000", "023000", "000907")),
+            (T("000000", "023000", "700090"), T("000000", "002300", "700090")),
         ),
-        test=((T("23000", "00000", "00070"), T("02300", "00000", "00070")),),
+        test=((T("230000", "000000", "070009"), T("023000", "000000", "070009")),),
         task_id="synthetic-composite",
     )
 

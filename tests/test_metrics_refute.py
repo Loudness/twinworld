@@ -48,8 +48,7 @@ def test_evaluate_bundles_metrics(recolor_task):
 def test_placebo_refuter_passes_on_honest_program(recolor_task):
     sol = fit(recolor_task, max_depth=1)
     report = refutation_battery(sol)
-    (row,) = report.rows
-    assert row.name == "placebo_intervention"
+    row = next(r for r in report.rows if r.name == "placebo_intervention")
     assert row.passed is True
     assert report.passed
 
@@ -61,5 +60,5 @@ def test_placebo_refuter_skips_without_spectator():
         task_id="no-spectator",
     )
     sol = fit(task, max_depth=1)
-    (row,) = refutation_battery(sol).rows
+    row = next(r for r in refutation_battery(sol).rows if r.name == "placebo_intervention")
     assert row.passed is None  # skipped, honestly reported
