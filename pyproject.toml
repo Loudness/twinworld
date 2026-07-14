@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dowhat"
+version = "0.0.1"
+description = "Counterfactual reasoning and explanation over symbolic state-transition traces, with the ARC challenge as first domain"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Aries" }]
+keywords = ["counterfactuals", "causality", "explainability", "neuro-symbolic", "ARC"]
+dependencies = [
+    "networkx>=3.0",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+arc = ["arckit>=0.1"]
+dev = ["pytest>=8", "ruff>=0.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
