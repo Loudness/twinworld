@@ -20,6 +20,7 @@ from .api import (
     refute,
 )
 from .analogy import content_vector, induce_rules, retrieve, structure_map
+from .concepts import DEFAULT_CONCEPTS, ConceptNet, learn_concepts
 from .engine import Counterfactual, Solution, Task, Trace, UnsolvedTaskError, solve
 from .mechanisms import (
     All,
@@ -39,6 +40,7 @@ from .mechanisms import (
 )
 from .metrics import MetricVector, evaluate, proximity, sparsity, validity
 from .refute import RefutationReport
+from .select import select
 from .representation import Grid, Obj, StateGraph, as_grid, match_objects, parse_grid
 
 __version__ = "0.0.1"
@@ -50,9 +52,11 @@ __all__ = [
     "CausalRepresentation",
     "ConfidenceReport",
     "Contrastive",
+    "ConceptNet",
     "Counterfactual",
     "CounterfactualSet",
     "DEFAULT_ABSTRACTIONS",
+    "DEFAULT_CONCEPTS",
     "Delete",
     "Grid",
     "Largest",
@@ -88,12 +92,14 @@ __all__ = [
     "compute",
     "evaluate",
     "identify",
+    "learn_concepts",
     "match_objects",
     "model",
     "parse_grid",
     "predict",
     "proximity",
     "refute",
+    "select",
     "solve",
     "sparsity",
     "validity",

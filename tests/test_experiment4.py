@@ -61,31 +61,6 @@ def test_negation_extends_the_solvable_language(except_largest_task):
 # ------------------------------------------------------- pertinent negatives
 
 
-@pytest.fixture
-def small_ambiguous_task() -> Task:
-    """The size-2 colour-2 bar is the largest object in every train pair, so
-    'recolour largest to 5' and 'recolour colour-2 to 5' fit equally."""
-    return Task(
-        train=(
-            (
-                T("220000", "000000", "000000", "000030", "000000"),
-                T("550000", "000000", "000000", "000030", "000000"),
-            ),
-            (
-                T("000000", "022000", "000000", "300000", "000000"),
-                T("000000", "055000", "000000", "300000", "000000"),
-            ),
-        ),
-        test=(
-            (
-                T("000022", "000000", "300000", "000000", "000000"),
-                T("000055", "000000", "300000", "000000", "000000"),
-            ),
-        ),
-        task_id="synthetic-small-ambiguous",
-    )
-
-
 def test_pertinent_negatives_discriminate_hypotheses(small_ambiguous_task):
     """Negation-as-discriminator: the Largest-hypothesis depends on the ABSENCE
     of any bigger object; the ByColour-hypothesis does not."""

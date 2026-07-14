@@ -14,7 +14,10 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Iterable, Protocol
+from typing import TYPE_CHECKING, Iterable, Protocol
+
+if TYPE_CHECKING:
+    from .concepts import ConceptNet
 
 Grid = tuple[tuple[int, ...], ...]
 Cell = tuple[int, int]
@@ -234,15 +237,22 @@ def parse_grid(grid: Grid, abstraction: str = "cc4", background: int | None = No
     return StateGraph(len(grid), len(grid[0]), bg, objects, abstraction)
 
 
-def attribute_score(x: Obj, y: Obj) -> float:
+def attribute_score(x: Obj, y: Obj, concepts: ConceptNet | None = None) -> float:
     """Property-level similarity of two objects: shared shape, colour,
     location, and cell overlap (IoU). Used for identity matching and as the
-    local-match score inside structure mapping."""
+    local-match score inside structure mapping. ``concepts`` swaps the
+    hand-coded weights for learned ones (None keeps the historical 4/2/1/3)."""
+    if concepts is None:
+        w_shape, w_colour, w_location, w_iou = 4.0, 2.0, 1.0, 3.0
+    else:
+        w_shape, w_colour, w_location, w_iou = (
+            concepts.shape, concepts.colour, concepts.location, concepts.iou,
+        )
     s = 0.0
-    s += 4 if x.shape == y.shape else 0
-    s += 2 if x.colour == y.colour else 0
-    s += 1 if x.location == y.location else 0
-    s += 3 * len(x.cells & y.cells) / len(x.cells | y.cells)
+    s += w_shape if x.shape == y.shape else 0
+    s += w_colour if x.colour == y.colour else 0
+    s += w_location if x.location == y.location else 0
+    s += w_iou * len(x.cells & y.cells) / len(x.cells | y.cells)
     return s
 
 

@@ -19,13 +19,36 @@ from typing import Iterator, Protocol, runtime_checkable
 from .representation import Obj, StateGraph, as_grid, parse_grid
 
 
+@dataclass(frozen=True)
+class PreimageBudget:
+    """Caps for non-injective preimage enumeration.
+
+    The enumeration is catalogue-bounded, not exhaustive; the budget makes the
+    bound an explicit, experimentable quantity (examples/abduction_scaling.py).
+    Measured finding: capping SINGLE-object hypotheses at ``anchors`` free
+    cells made most true origins hard-unreachable on large grids (the cap has
+    a top-left bias), so singles now stream over every free cell and
+    ``anchors`` bounds only the pool that two-object PAIRS are drawn from;
+    ``cap_singles=True`` restores the historical behaviour for comparison."""
+
+    anchors: int = 40  # free cells anchoring the PAIR hypothesis pool (Delete)
+    pairs: int = 200  # two-object hypotheses examined (Delete)
+    recolour_objects: int = 6  # uniformly-target objects considered (RecolourTo)
+    cap_singles: bool = False  # True = pre-fix behaviour: singles also capped
+
+
+DEFAULT_PREIMAGE_BUDGET = PreimageBudget()
+
+
 @runtime_checkable
 class Mechanism(Protocol):
     exact_preimage: bool
 
     def apply(self, s: StateGraph) -> StateGraph | None: ...
 
-    def preimage(self, s: StateGraph) -> Iterator[StateGraph]: ...
+    def preimage(
+        self, s: StateGraph, budget: PreimageBudget | None = None
+    ) -> Iterator[StateGraph]: ...
 
 
 # hypothesis-space footprints for abduction through deletion
@@ -62,7 +85,9 @@ class Identity:
     def apply(self, s: StateGraph) -> StateGraph:
         return s
 
-    def preimage(self, s: StateGraph) -> Iterator[StateGraph]:
+    def preimage(
+        self, s: StateGraph, budget: PreimageBudget | None = None
+    ) -> Iterator[StateGraph]:
         yield s
 
     def __str__(self) -> str:
@@ -93,7 +118,11 @@ class Recolor:
         rows = [[self.dst if v == self.src else v for v in row] for row in s.grid]
         return parse_grid(as_grid(rows), abstraction=s.abstraction, background=s.background)
 
-    def preimage(self, s: StateGraph) -> Iterator[StateGraph]:
+    def preimage(
+        self, s: StateGraph, budget: PreimageBudget | None = None
+    ) -> Iterator[StateGraph]:
+        # budget accepted for protocol uniformity; the exact subset enumeration
+        # here is bounded by the dst-uniform object count, not by a cap
         if self.src == self.dst or any(self.src in o.colours for o in s.objects):
             return  # apply leaves no src-coloured pixel behind
         uniform_dst = [o for o in s.objects if o.colours == frozenset({self.dst})]
@@ -140,7 +169,9 @@ class Translate:
         ]
         return _rebuild(s, objects)
 
-    def preimage(self, s: StateGraph) -> Iterator[StateGraph]:
+    def preimage(
+        self, s: StateGraph, budget: PreimageBudget | None = None
+    ) -> Iterator[StateGraph]:
         inverse = Translate(-self.dr, -self.dc, self.colour)
         pre = inverse.apply(s)
         if pre is not None and self.apply(pre) == s:
@@ -281,7 +312,10 @@ class ObjectRule:
             return None  # no-op applications are inapplicable, not silent identities
         return out
 
-    def preimage(self, s: StateGraph) -> Iterator[StateGraph]:
+    def preimage(
+        self, s: StateGraph, budget: PreimageBudget | None = None
+    ) -> Iterator[StateGraph]:
+        budget = budget or DEFAULT_PREIMAGE_BUDGET
         # Translations: exact — the selector re-selects the same objects
         # (colour and size are translation-invariant), so undoing is sound.
         if isinstance(self.transform, TranslateBy):
@@ -298,7 +332,8 @@ class ObjectRule:
         # per flip set), each candidate verified by re-application.
         if isinstance(self.transform, RecolourTo):
             target = self.transform.colour
-            uniform = [o for o in s.objects if o.colours == frozenset({target})][:6]
+            uniform = [o for o in s.objects if o.colours == frozenset({target})]
+            uniform = uniform[: budget.recolour_objects]
             if isinstance(self.selector, ByColour):
                 originals = [self.selector.colour]
             elif isinstance(self.selector, Not) and isinstance(self.selector.inner, ByColour):
@@ -323,10 +358,12 @@ class ObjectRule:
         # (the deleted objects are exactly what the selector picks; no
         # survivor is selectable) comes for free from re-application.
         if isinstance(self.transform, Delete):
-            yield from self._deleted_hypotheses(s)
+            yield from self._deleted_hypotheses(s, budget)
         return
 
-    def _deleted_hypotheses(self, s: StateGraph) -> Iterator[StateGraph]:
+    def _deleted_hypotheses(
+        self, s: StateGraph, budget: PreimageBudget = DEFAULT_PREIMAGE_BUDGET
+    ) -> Iterator[StateGraph]:
         if isinstance(self.selector, ByColour):
             colours = [self.selector.colour]
         elif isinstance(self.selector, Not) and isinstance(self.selector.inner, ByColour):
@@ -352,15 +389,23 @@ class ObjectRule:
             for c in range(s.width)
             if (r, c) not in halo and grid[r][c] == s.background
         }
-        singles: list[frozenset] = []
-        for anchor_r, anchor_c in sorted(free)[:40]:
-            for shape in _HYPOTHESIS_SHAPES:
-                cells = [(anchor_r + r, anchor_c + c) for r, c in shape]
-                if all(cell in free for cell in cells):
-                    singles.append(frozenset(cells))
-        # Occam ordering: smallest hypothesised objects first, so minimal
-        # explanations (and their pairs) enumerate before the cap bites
-        singles.sort(key=lambda cells: (len(cells), sorted(cells)))
+        free_sorted = sorted(free)
+
+        def hypotheses(anchors: list) -> list[frozenset]:
+            out = []
+            for anchor_r, anchor_c in anchors:
+                for shape in _HYPOTHESIS_SHAPES:
+                    cells = [(anchor_r + r, anchor_c + c) for r, c in shape]
+                    if all(cell in free for cell in cells):
+                        out.append(frozenset(cells))
+            # Occam ordering: smallest hypothesised objects first
+            out.sort(key=lambda cells: (len(cells), sorted(cells)))
+            return out
+
+        # pairs draw from a capped pool; singles cover every free cell unless
+        # the historical cap is explicitly requested (see PreimageBudget)
+        pair_pool = hypotheses(free_sorted[: budget.anchors])
+        singles = pair_pool if budget.cap_singles else hypotheses(free_sorted)
         next_oid = max((o.oid for o in s.objects), default=-1) + 1
 
         def candidate(cell_groups: tuple[frozenset, ...], colour: int) -> StateGraph | None:
@@ -377,9 +422,9 @@ class ObjectRule:
                 if pre is not None and self.apply(pre) == s:
                     yield pre
         seen_pairs = 0
-        for i, a in enumerate(singles):
-            for b in singles[i + 1 :]:
-                if seen_pairs >= 200:
+        for i, a in enumerate(pair_pool):
+            for b in pair_pool[i + 1 :]:
+                if seen_pairs >= budget.pairs:
                     return
                 near = {
                     (r + dr, c + dc) for r, c in a for dr in (-1, 0, 1) for dc in (-1, 0, 1)

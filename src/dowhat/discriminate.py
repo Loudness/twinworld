@@ -83,6 +83,7 @@ class DiscriminationReport:
     classes: tuple[tuple[Program, ...], ...]  # behavioural equivalence classes
     probe: Grid | None  # first probe separating the first two classes
     outputs: tuple[Grid | None, ...]  # each class's output on that probe
+    signatures: tuple[tuple, ...] = ()  # full per-class probe fingerprints
 
     @property
     def underdetermined(self) -> bool:
@@ -113,7 +114,9 @@ def diagnose(task: Task, programs: list[Program], abstraction: str = "cc4") -> D
     signatures = list(groups)
     classes = tuple(tuple(groups[s]) for s in signatures)
     if len(classes) < 2:
-        return DiscriminationReport(classes, None, ())
+        return DiscriminationReport(classes, None, (), tuple(signatures))
     first, second = signatures[0], signatures[1]
     idx = next(i for i in range(len(probe_grids)) if first[i] != second[i])
-    return DiscriminationReport(classes, probe_grids[idx], tuple(s[idx] for s in signatures))
+    return DiscriminationReport(
+        classes, probe_grids[idx], tuple(s[idx] for s in signatures), tuple(signatures)
+    )

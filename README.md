@@ -60,12 +60,43 @@ into behavioural classes and applied to the test input — one class (or
 unanimity) gates high, disagreement gates low and `predict` abstains with the
 alternatives. The gate never sees the test output.
 
+Whether counterfactual discrimination actually improves test accuracy on
+failure class 3 — the proposal's most testable hypothesis — is now measured
+(`examples/discrimination_report.py`, controlled ambiguous tasks where
+Largest ≡ ByColour on every demonstration and the readings part ways on the
+held-out test). **Passively**, no selection policy (`dowhat.select`: first /
+random / shortest / largest-class / probe-stability / fewest-absences) beats
+the pre-registered 50% ceiling on the symmetric collision (measured 0.40–0.57
+over 30 instances), and in a declared colour-favoured world only prior-aligned
+policies reach 0.70 — so the gate's calibrated abstention (30/30 answered with
+zero errors on benign ambiguity) remains the library default. **Actively**,
+the picture flips: answering the single diagnosing probe that
+`dowhat.discriminate` exhibits lifts accuracy from 16/30 to **30/30 with one
+query**, while the same query spent on a random extra demonstration reaches
+only 27/30 and fails to break the collision 14/30 times — counterfactual
+discrimination improves test accuracy exactly when it can *ask*, because the
+probe is chosen where the hypotheses part ways. On the real corpus the sole
+LOW specimen (b230c067) defeats every policy: none of its three fitted classes
+contains the true behaviour — on real ARC, failure class 3 co-occurs with
+class 1 (vocabulary incompleteness), and no selection can fix what induction
+never proposed.
+
 Abduction now runs backwards through *deletions*: `Delete` preimages enumerate
 a bounded hypothesis space over what could have been erased (small shapes,
 selector-pinned colours, separated placements), each candidate verified by
 exact re-application, and `dowhat.engine.abduce_inputs` chains preimages
 right-to-left — the proposal's "time travel backwards", working through
-non-invertible steps.
+non-invertible steps. How that enumeration scales is measured, not guessed
+(`examples/abduction_scaling.py`, ground-truth instances): the historical
+anchor cap made most true origins **hard-unreachable** on large grids (a
+top-left bias — recall collapsed by 20×20 and ×4 budgets did not help), so
+single-object hypotheses now stream over every free cell and the true
+pre-state is always findable at a rank that grows with
+|free cells| × |shapes| × |pinned colours| — the honest law. Two-object truths
+still trail every single-object world (Occam orders smallest-first, and pairs
+stay capped via the explicit `PreimageBudget`), and backward chains need the
+per-layer limit to cover the frontier (recovery saturates at limit 256): both
+walls are documented in the report, not hidden.
 
 Validation against causal ground truth is measured, not assumed
 (`examples/causal_validation.py`): on latent-SCM tasks the Pearl-ladder
@@ -101,6 +132,25 @@ them — analogy proposes, search disposes. On tasks it solves, the analogy path
 tries a median of ~1 program where blind enumeration tried hundreds, and
 train-fitting programs that fail the held-out test are reported as
 *underdetermined*, not solved — that gap is a research target, not noise.
+
+The concept network behind that machinery is now **data, not code**
+(`dowhat.concepts`): `learn_concepts` estimates the attribute weights, five
+per-relation weights, and slippage probabilities from a corpus using
+leave-one-attribute-out anchoring (colour statistics only from shape-anchored
+correspondences and vice versa — never circular), and `ConceptNet` carries
+them as a JSON-serializable artifact (`docs/learned-concepts.json`). Learned
+from the 1000 ARC training tasks, the numbers overturn the hand-coded
+intuitions — shape is the *least* reliable attribute (weight 4.0 → 0.27; true
+correspondences change shape 42% of the time) while location is far more
+informative than assumed (1.0 → 2.82) — yet every known solve survives and
+the learned rule-family priors cut median programs-tried from 2 to 1. A
+second, Copycat-style correspondence backend (`dowhat.copycat`: temperature,
+annealed repair, slippage licensed by the learned slips;
+`model(mapper="copycat"|"both")`) answers the digest's compose-or-compete
+question empirically: on this corpus at this vocabulary they **coincide** —
+identical solves, no union gain — and the held-out 120-task ARC-AGI-2 eval
+set fits 0/120 under every configuration: the wall is the rule vocabulary,
+not the weights (`examples/concept_report.py`).
 
 Research grounding and full citations: [docs/research-digest.md](docs/research-digest.md).
 

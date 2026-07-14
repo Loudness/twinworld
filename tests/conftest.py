@@ -120,3 +120,43 @@ def unsolvable_task() -> Task:
         test=((T("03", "00"), T("33", "33")),),
         task_id="synthetic-unsolvable",
     )
+
+
+@pytest.fixture
+def ambiguous_task() -> Task:
+    """Largest object == the colour-2 object in every train pair: 'recolour the
+    largest' and 'recolour colour 2' fit equally. Only a counterfactual probe
+    (e.g. deleting the bar) separates them."""
+    return Task(
+        train=(
+            (T("22200", "00000", "00030"), T("55500", "00000", "00030")),
+            (T("00000", "02220", "30000"), T("00000", "05550", "30000")),
+        ),
+        test=((T("00222", "30000", "00000"), T("00555", "30000", "00000")),),
+        task_id="synthetic-ambiguous",
+    )
+
+
+@pytest.fixture
+def small_ambiguous_task() -> Task:
+    """The size-2 colour-2 bar is the largest object in every train pair, so
+    'recolour largest to 5' and 'recolour colour-2 to 5' fit equally."""
+    return Task(
+        train=(
+            (
+                T("220000", "000000", "000000", "000030", "000000"),
+                T("550000", "000000", "000000", "000030", "000000"),
+            ),
+            (
+                T("000000", "022000", "000000", "300000", "000000"),
+                T("000000", "055000", "000000", "300000", "000000"),
+            ),
+        ),
+        test=(
+            (
+                T("000022", "000000", "300000", "000000", "000000"),
+                T("000055", "000000", "300000", "000000", "000000"),
+            ),
+        ),
+        task_id="synthetic-small-ambiguous",
+    )

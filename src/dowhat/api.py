@@ -11,10 +11,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
+
+if TYPE_CHECKING:
+    from .discriminate import DiscriminationReport
 
 from . import metrics as _metrics
 from .analogy import induce_rules
+from .concepts import ConceptNet
 from .engine import (
     Counterfactual,
     Solution,
@@ -54,6 +58,8 @@ class CausalRepresentation:
     max_depth: int = 2
     induction: str = "auto"
     analogy_depth: int = 3
+    concepts: ConceptNet | None = None
+    mapper: str = "sme"
 
 
 def _fit_abstraction(
@@ -63,6 +69,8 @@ def _fit_abstraction(
     max_depth: int,
     induction: str,
     analogy_depth: int,
+    concepts: ConceptNet | None = None,
+    mapper: str = "sme",
 ) -> Solution:
     """Fit one abstraction: analogy-proposed rules first, blind enumeration after.
 
@@ -76,7 +84,7 @@ def _fit_abstraction(
         return solution_from_asp(task, abstraction, result)
     analogy_error: str | None = None
     if induction in ("auto", "always"):
-        candidates = induce_rules(task, abstraction)
+        candidates = induce_rules(task, abstraction, concepts=concepts, mapper=mapper)
         if candidates:
             try:
                 return solve(
@@ -99,6 +107,8 @@ def model(
     max_depth: int = 2,
     induction: str = "auto",
     analogy_depth: int = 3,
+    concepts: ConceptNet | None = None,
+    mapper: str = "sme",
 ) -> CausalRepresentation:
     """Parse the task into object graphs, induce the program, record the DAG.
 
@@ -119,7 +129,8 @@ def model(
     for abstraction in abstractions:
         try:
             solutions[abstraction] = _fit_abstraction(
-                task, abstraction, primitives, max_depth, induction, analogy_depth
+                task, abstraction, primitives, max_depth, induction, analogy_depth,
+                concepts, mapper,
             )
         except UnsolvedTaskError as err:
             failures[abstraction] = str(err)
@@ -133,7 +144,7 @@ def model(
     )
     return CausalRepresentation(
         task, chosen, tuple(primitives), solutions[chosen], solutions, failures,
-        max_depth, induction, analogy_depth,
+        max_depth, induction, analogy_depth, concepts, mapper,
     )
 
 
@@ -441,7 +452,14 @@ def _contrast(identified: IdentifiedQuery) -> CounterfactualSet:
     """Why X rather than Y: certified minimal program edits reaching the foil."""
     rep, query = identified.rep, identified.query
     trace = _resolve_trace(rep, query.on)
-    pool = list(dict.fromkeys([*induce_rules(rep.task, rep.abstraction), *rep.primitives]))
+    pool = list(
+        dict.fromkeys(
+            [
+                *induce_rules(rep.task, rep.abstraction, rep.concepts, rep.mapper),
+                *rep.primitives,
+            ]
+        )
+    )
     k, cfs = minimal_edits(
         rep.solution, trace, query.target_output, pool, k_max=query.k_max
     )
@@ -485,6 +503,7 @@ def _resegment(rep: CausalRepresentation, alt_abstraction: str) -> Counterfactua
             alt = _fit_abstraction(
                 rep.task, alt_abstraction, rep.primitives,
                 rep.max_depth, rep.induction, rep.analogy_depth,
+                rep.concepts, rep.mapper,
             )
             rep.solutions[alt_abstraction] = alt
         except UnsolvedTaskError as err:
@@ -579,6 +598,7 @@ class ConfidenceReport:
     confidence: str  # "high" | "low"
     predictions: tuple  # one tuple of output grids (or None) per class
     probe: Grid | None
+    discrimination: DiscriminationReport | None = None  # the full class structure
 
     def __str__(self) -> str:
         return (
@@ -600,7 +620,12 @@ def assess(rep: CausalRepresentation) -> ConfidenceReport:
     from .engine import ApplyCache, solve_all
 
     pool = list(
-        dict.fromkeys([*induce_rules(rep.task, rep.abstraction), *rep.solution.program])
+        dict.fromkeys(
+            [
+                *induce_rules(rep.task, rep.abstraction, rep.concepts, rep.mapper),
+                *rep.solution.program,
+            ]
+        )
     )
     depth = max(1, len(rep.solution.program))
     fits = solve_all(rep.task, pool, max_depth=depth, abstraction=rep.abstraction)
@@ -620,7 +645,7 @@ def assess(rep: CausalRepresentation) -> ConfidenceReport:
     confidence = "high" if (not report.underdetermined or unanimous) else "low"
     return ConfidenceReport(
         tuple(fits), len(report.classes), report.underdetermined,
-        unanimous, confidence, tuple(predictions), report.probe,
+        unanimous, confidence, tuple(predictions), report.probe, report,
     )
 
 

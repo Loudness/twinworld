@@ -14,7 +14,6 @@ from dowhat import (
     ObjectRule,
     Recolor,
     RecolourTo,
-    Task,
     induce_rules,
 )
 from dowhat.benchmark import generate_task, random_task
@@ -109,21 +108,6 @@ def test_responsibility_profile_takes_max_over_sets(recolor_task):
 
 
 # ------------------------------------------------ underdetermination probing
-
-
-@pytest.fixture
-def ambiguous_task() -> Task:
-    """Largest object == the colour-2 object in every train pair: 'recolour the
-    largest' and 'recolour colour 2' fit equally. Only a counterfactual probe
-    (e.g. deleting the bar) separates them."""
-    return Task(
-        train=(
-            (T("22200", "00000", "00030"), T("55500", "00000", "00030")),
-            (T("00000", "02220", "30000"), T("00000", "05550", "30000")),
-        ),
-        test=((T("00222", "30000", "00000"), T("00555", "30000", "00000")),),
-        task_id="synthetic-ambiguous",
-    )
 
 
 def test_solve_all_finds_the_competing_hypotheses(ambiguous_task):

@@ -1,0 +1,55 @@
+{
+  "colour": 0.926,
+  "iou": 2.8686,
+  "location": 2.8182,
+  "priors": [
+    [
+      "All*TranslateBy",
+      0.2
+    ],
+    [
+      "Largest*TranslateBy",
+      0.2
+    ],
+    [
+      "Smallest*TranslateBy",
+      0.2
+    ],
+    [
+      "All*Delete",
+      0.2
+    ],
+    [
+      "Not(Smallest)*RecolourTo",
+      0.2
+    ]
+  ],
+  "relations": [
+    [
+      "above",
+      0.9591
+    ],
+    [
+      "larger",
+      2.3578
+    ],
+    [
+      "left_of",
+      0.983
+    ],
+    [
+      "same_colour",
+      1.8725
+    ],
+    [
+      "same_shape",
+      1.4686
+    ]
+  ],
+  "shape": 0.2702,
+  "slip_colour": 0.2218,
+  "slip_delete": 0.137,
+  "slip_move": 0.3346,
+  "slip_shape": 0.4239,
+  "source": "learned from 1000 task(s), abstraction cc4"
+}

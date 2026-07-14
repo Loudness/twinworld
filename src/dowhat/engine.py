@@ -21,7 +21,7 @@ from typing import Sequence
 
 import networkx as nx
 
-from .mechanisms import Mechanism
+from .mechanisms import Mechanism, PreimageBudget
 from .representation import Grid, StateGraph, as_grid, parse_grid
 
 Program = tuple[Mechanism, ...]
@@ -238,7 +238,10 @@ def minimal_edits(
 
 
 def abduce_inputs(
-    program: Sequence[Mechanism], final_state: StateGraph, limit: int = 16
+    program: Sequence[Mechanism],
+    final_state: StateGraph,
+    limit: int = 16,
+    budget: "PreimageBudget | None" = None,
 ) -> list[StateGraph]:
     """Time travel backwards: inputs the program maps to ``final_state``,
     enumerated by chaining mechanism preimages right-to-left. Completeness is
@@ -248,7 +251,7 @@ def abduce_inputs(
     for mech in reversed(tuple(program)):
         # round-robin across frontier states, so no single state's (possibly
         # long) preimage stream starves the others before the limit is hit
-        generators = [mech.preimage(state) for state in frontier]
+        generators = [mech.preimage(state, budget) for state in frontier]
         collected: list[StateGraph] = []
         while generators and len(collected) < limit:
             still_active = []

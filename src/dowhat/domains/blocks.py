@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Iterator, Sequence
 
 from ..engine import Task
+from ..mechanisms import PreimageBudget
 from ..representation import Grid, StateGraph, as_grid, parse_grid
 
 Towers = Sequence[Sequence[int]]  # towers[c] = blocks in column c, bottom -> top
@@ -100,7 +101,10 @@ class MoveBlock:
         rows[landing][self.to_column] = self.block
         return parse_grid(as_grid(rows), abstraction=s.abstraction, background=s.background)
 
-    def preimage(self, s: StateGraph) -> Iterator[StateGraph]:
+    def preimage(
+        self, s: StateGraph, budget: PreimageBudget | None = None
+    ) -> Iterator[StateGraph]:
+        # budget ignored: undo-to-each-column is an exact, tiny enumeration
         """Exact abduction: the block now tops ``to_column``; undo to the top
         of every other column and keep the candidates that re-apply to s."""
         for source in range(s.width):

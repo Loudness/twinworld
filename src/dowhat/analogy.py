@@ -18,9 +18,11 @@ support cheap cross-task retrieval of previously solved tasks.
 from __future__ import annotations
 
 import math
+import random
 from collections import Counter
 from dataclasses import dataclass
 
+from .concepts import ConceptNet
 from .engine import Task
 from .mechanisms import (
     All,
@@ -63,27 +65,25 @@ def relations(state: StateGraph) -> set[tuple[str, int, int]]:
 
 
 def _relational_score(
-    mapping: dict[int, int], rels_a: set[tuple[str, int, int]], rels_b: set[tuple[str, int, int]]
+    mapping: dict[int, int],
+    rels_a: set[tuple[str, int, int]],
+    rels_b: set[tuple[str, int, int]],
+    concepts: ConceptNet | None = None,
 ) -> float:
-    preserved = sum(
-        1
+    preserved = [
+        rel
         for rel, x, y in rels_a
         if x in mapping and y in mapping and (rel, mapping[x], mapping[y]) in rels_b
-    )
-    return RELATION_WEIGHT * preserved
+    ]
+    if concepts is None:
+        return RELATION_WEIGHT * len(preserved)
+    return sum(concepts.relation_weight(rel) for rel in preserved)
 
 
-def structure_map(a: StateGraph, b: StateGraph) -> list[tuple[Obj | None, Obj | None]]:
-    """One-to-one object mapping maximizing attribute + relational agreement.
-
-    Greedy merge on attribute score, then bounded swap-repair passes that
-    accept any reassignment improving the global (attribute + relation) score.
-    Returns the same pair structure as ``match_objects``.
-    """
-    a_objs = {o.oid: o for o in a.objects}
-    b_objs = {o.oid: o for o in b.objects}
+def _greedy_mapping(a: StateGraph, b: StateGraph, concepts: ConceptNet | None = None) -> dict:
+    """Forbus & Oblinger's greedy merge on attribute score alone."""
     candidates = sorted(
-        ((attribute_score(x, y), x.oid, y.oid) for x in a.objects for y in b.objects),
+        ((attribute_score(x, y, concepts), x.oid, y.oid) for x in a.objects for y in b.objects),
         key=lambda t: (-t[0], t[1], t[2]),
     )
     mapping: dict[int, int] = {}
@@ -93,13 +93,54 @@ def structure_map(a: StateGraph, b: StateGraph) -> list[tuple[Obj | None, Obj | 
             continue
         mapping[xid] = yid
         taken_b.add(yid)
+    return mapping
+
+
+def _map_score(
+    mapping: dict[int, int],
+    a_objs: dict[int, Obj],
+    b_objs: dict[int, Obj],
+    rels_a: set[tuple[str, int, int]],
+    rels_b: set[tuple[str, int, int]],
+    concepts: ConceptNet | None = None,
+    slip: bool = False,
+) -> float:
+    """Global mapping quality. With ``slip`` (the Copycat objective), an
+    attribute mismatch is not worth zero: it earns the attribute's weight
+    scaled by the learned probability that a true correspondence changes that
+    attribute — Hofstadter's slippage made quantitative."""
+    total = 0.0
+    for x, y in mapping.items():
+        ox, oy = a_objs[x], b_objs[y]
+        total += attribute_score(ox, oy, concepts)
+        if slip and concepts is not None:
+            if ox.shape != oy.shape:
+                total += concepts.shape * concepts.slip_shape
+            if ox.colour != oy.colour:
+                total += concepts.colour * concepts.slip_colour
+            if ox.location != oy.location:
+                total += concepts.location * concepts.slip_move
+    return total + _relational_score(mapping, rels_a, rels_b, concepts)
+
+
+def structure_map(
+    a: StateGraph, b: StateGraph, concepts: ConceptNet | None = None
+) -> list[tuple[Obj | None, Obj | None]]:
+    """One-to-one object mapping maximizing attribute + relational agreement.
+
+    Greedy merge on attribute score, then bounded swap-repair passes that
+    accept any reassignment improving the global (attribute + relation) score.
+    Returns the same pair structure as ``match_objects``.
+    """
+    a_objs = {o.oid: o for o in a.objects}
+    b_objs = {o.oid: o for o in b.objects}
+    mapping = _greedy_mapping(a, b, concepts)
 
     if 0 < len(mapping) and max(len(a.objects), len(b.objects)) <= MAX_REPAIR_OBJECTS:
         rels_a, rels_b = relations(a), relations(b)
 
         def total(m: dict[int, int]) -> float:
-            attr = sum(attribute_score(a_objs[x], b_objs[y]) for x, y in m.items())
-            return attr + _relational_score(m, rels_a, rels_b)
+            return _map_score(m, a_objs, b_objs, rels_a, rels_b, concepts)
 
         best = total(mapping)
         for _ in range(3):  # bounded repair
@@ -138,9 +179,23 @@ class Delta:
     deleted: bool
 
 
-def pair_deltas(state_in: StateGraph, state_out: StateGraph) -> list[Delta]:
+def pair_deltas(
+    state_in: StateGraph,
+    state_out: StateGraph,
+    concepts: ConceptNet | None = None,
+    mapper: str = "sme",
+    rng: random.Random | None = None,
+) -> list[Delta]:
+    if mapper == "sme":
+        pairs = structure_map(state_in, state_out, concepts)
+    elif mapper == "copycat":
+        from .copycat import copycat_map
+
+        pairs = copycat_map(state_in, state_out, concepts, rng)
+    else:
+        raise ValueError(f"unknown mapper {mapper!r}; registered: 'sme', 'copycat'")
     deltas = []
-    for x, y in structure_map(state_in, state_out):
+    for x, y in pairs:
         if x is None:
             continue  # appearances are outside the current rule language
         if y is None:
@@ -154,18 +209,41 @@ def pair_deltas(state_in: StateGraph, state_out: StateGraph) -> list[Delta]:
     return deltas
 
 
-def induce_rules(task: Task, abstraction: str = "cc4") -> list[ObjectRule]:
+def induce_rules(
+    task: Task,
+    abstraction: str = "cc4",
+    concepts: ConceptNet | None = None,
+    mapper: str = "sme",
+) -> list[ObjectRule]:
     """Propose ObjectRules consistent with every train pair's structure mapping.
 
     A candidate needs its selector to pick at least one object in every train
     input and its transform to agree with every selected object's delta. The
-    engine remains the verifier — bad proposals simply fail search.
+    engine remains the verifier — bad proposals simply fail search. ``mapper``
+    selects the correspondence backend ("sme", "copycat", or "both" = the
+    deduplicated union); learned ``concepts.priors`` reorder the candidates,
+    never filter them.
     """
+    if mapper == "both":
+        rules = induce_rules(task, abstraction, concepts, "sme")
+        extra = [
+            r
+            for r in induce_rules(task, abstraction, concepts, "copycat")
+            if r not in rules
+        ]
+        rules = rules + extra
+        if concepts is not None and concepts.priors:
+            rules = sorted(rules, key=lambda r: -concepts.prior(r))
+        return rules
+
     inputs = [parse_grid(i, abstraction) for i, _ in task.train]
     outputs = [parse_grid(o, abstraction) for _, o in task.train]
     if any(not s.objects for s in inputs):
         return []
-    all_deltas = [pair_deltas(a, b) for a, b in zip(inputs, outputs)]
+    all_deltas = [
+        pair_deltas(a, b, concepts, mapper, rng=random.Random(k))
+        for k, (a, b) in enumerate(zip(inputs, outputs))
+    ]
     by_obj = [{d.obj.oid: d for d in ds} for ds in all_deltas]
 
     shared_colours = set.intersection(*({o.colour for o in s.objects} for s in inputs))
@@ -202,6 +280,8 @@ def induce_rules(task: Task, abstraction: str = "cc4") -> list[ObjectRule]:
     for r in rules:
         if r not in unique:
             unique.append(r)
+    if concepts is not None and concepts.priors:
+        unique = sorted(unique, key=lambda r: -concepts.prior(r))
     return unique
 
 
