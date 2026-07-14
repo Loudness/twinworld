@@ -28,6 +28,16 @@ class Mechanism(Protocol):
     def preimage(self, s: StateGraph) -> Iterator[StateGraph]: ...
 
 
+# hypothesis-space footprints for abduction through deletion
+_HYPOTHESIS_SHAPES = (
+    ((0, 0),),
+    ((0, 0), (0, 1)),
+    ((0, 0), (1, 0)),
+    ((0, 0), (0, 1), (0, 2)),
+    ((0, 0), (1, 0), (2, 0)),
+)
+
+
 def _rebuild(s: StateGraph, objects: list[Obj]) -> StateGraph | None:
     """Render transformed objects and re-parse canonically; None on collisions
     or out-of-bounds pixels."""
@@ -306,10 +316,81 @@ class ObjectRule:
                         if pre is not None and self.apply(pre) == s:
                             yield pre
             return
-        # Delete: preimages would require a hypothesis space over what was
-        # deleted (an unbounded object catalogue) — deliberately not
-        # enumerated; abduction through deletion is future work.
+        # Delete: abduction through deletion needs a hypothesis space over
+        # what was deleted. The catalogue below is bounded (small shapes,
+        # selector-pinned colours, separated placements) — but apply(pre) == s
+        # is a COMPLETE verifier, so every selector-consistency constraint
+        # (the deleted objects are exactly what the selector picks; no
+        # survivor is selectable) comes for free from re-application.
+        if isinstance(self.transform, Delete):
+            yield from self._deleted_hypotheses(s)
         return
+
+    def _deleted_hypotheses(self, s: StateGraph) -> Iterator[StateGraph]:
+        if isinstance(self.selector, ByColour):
+            colours = [self.selector.colour]
+        elif isinstance(self.selector, Not) and isinstance(self.selector.inner, ByColour):
+            colours = [
+                c for c in range(1, 10)
+                if c not in (self.selector.inner.colour, s.background)
+            ]
+        else:
+            # bounded to the surviving palette (Occam); the verifier would
+            # accept other colours too, but the catalogue must stop somewhere
+            colours = sorted({o.colour for o in s.objects}) or [1]
+        occupied = {cell for o in s.objects for cell in o.cells}
+        halo = {
+            (r + dr, c + dc)
+            for r, c in occupied
+            for dr in (-1, 0, 1)
+            for dc in (-1, 0, 1)
+        }
+        grid = s.grid
+        free = {
+            (r, c)
+            for r in range(s.height)
+            for c in range(s.width)
+            if (r, c) not in halo and grid[r][c] == s.background
+        }
+        singles: list[frozenset] = []
+        for anchor_r, anchor_c in sorted(free)[:40]:
+            for shape in _HYPOTHESIS_SHAPES:
+                cells = [(anchor_r + r, anchor_c + c) for r, c in shape]
+                if all(cell in free for cell in cells):
+                    singles.append(frozenset(cells))
+        # Occam ordering: smallest hypothesised objects first, so minimal
+        # explanations (and their pairs) enumerate before the cap bites
+        singles.sort(key=lambda cells: (len(cells), sorted(cells)))
+        next_oid = max((o.oid for o in s.objects), default=-1) + 1
+
+        def candidate(cell_groups: tuple[frozenset, ...], colour: int) -> StateGraph | None:
+            added = [
+                Obj.solid(next_oid + i, colour, cells)
+                for i, cells in enumerate(cell_groups)
+            ]
+            return _rebuild(s, list(s.objects) + added)
+
+        # smaller hypotheses first: one deleted object, then two
+        for cells in singles:
+            for colour in colours:
+                pre = candidate((cells,), colour)
+                if pre is not None and self.apply(pre) == s:
+                    yield pre
+        seen_pairs = 0
+        for i, a in enumerate(singles):
+            for b in singles[i + 1 :]:
+                if seen_pairs >= 200:
+                    return
+                near = {
+                    (r + dr, c + dc) for r, c in a for dr in (-1, 0, 1) for dc in (-1, 0, 1)
+                }
+                if near & b:
+                    continue  # keep the two hypothesised objects separated
+                seen_pairs += 1
+                for colour in colours:
+                    pre = candidate((a, b), colour)
+                    if pre is not None and self.apply(pre) == s:
+                        yield pre
 
     def __str__(self) -> str:
         return str(self.transform) % str(self.selector)

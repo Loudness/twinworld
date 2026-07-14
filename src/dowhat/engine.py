@@ -237,6 +237,38 @@ def minimal_edits(
     return None, []
 
 
+def abduce_inputs(
+    program: Sequence[Mechanism], final_state: StateGraph, limit: int = 16
+) -> list[StateGraph]:
+    """Time travel backwards: inputs the program maps to ``final_state``,
+    enumerated by chaining mechanism preimages right-to-left. Completeness is
+    bounded by each mechanism's ``exact_preimage`` declaration — with delete
+    abduction this now works through non-invertible steps too."""
+    frontier: list[StateGraph] = [final_state]
+    for mech in reversed(tuple(program)):
+        # round-robin across frontier states, so no single state's (possibly
+        # long) preimage stream starves the others before the limit is hit
+        generators = [mech.preimage(state) for state in frontier]
+        collected: list[StateGraph] = []
+        while generators and len(collected) < limit:
+            still_active = []
+            for gen in generators:
+                try:
+                    pre = next(gen)
+                except StopIteration:
+                    continue
+                still_active.append(gen)
+                if pre not in collected:
+                    collected.append(pre)
+                    if len(collected) >= limit:
+                        break
+            generators = still_active
+        frontier = collected
+        if not frontier:
+            return []
+    return frontier[:limit]
+
+
 def solve_all(
     task: Task,
     primitives: Sequence[Mechanism],

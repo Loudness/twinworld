@@ -60,6 +60,25 @@ into behavioural classes and applied to the test input — one class (or
 unanimity) gates high, disagreement gates low and `predict` abstains with the
 alternatives. The gate never sees the test output.
 
+Abduction now runs backwards through *deletions*: `Delete` preimages enumerate
+a bounded hypothesis space over what could have been erased (small shapes,
+selector-pinned colours, separated placements), each candidate verified by
+exact re-application, and `dowhat.engine.abduce_inputs` chains preimages
+right-to-left — the proposal's "time travel backwards", working through
+non-invertible steps.
+
+Validation against causal ground truth is measured, not assumed
+(`examples/causal_validation.py`): on latent-SCM tasks the Pearl-ladder
+agreement is exact where induction recovers the latent program (L2: 27/27),
+and every disagreement is observational equivalence failing to survive
+interventions — underdetermination, not engine error. The
+[CausalARC](https://huggingface.co/datasets/jmaasch/causal_arc) benchmark
+(Maasch et al. 2025) loads through `dowhat.domains.causalarc` (runtime-fetched
+evaluation data, GPL — never vendored, SCM sources never executed), and a
+local-LLM baseline (`dowhat.baselines.llm`, any OpenAI-compatible endpoint)
+supports the head-to-head and CausalARC's counterfactual-feedback setting
+(`examples/llm_baseline.py`).
+
 Negation runs through the library three ways (thesis Experiment 4): `Not(...)`
 selectors in the rule language ("recolour everything *except* the largest" —
 which solved an ARC task no positive selector could, at the measured cost of

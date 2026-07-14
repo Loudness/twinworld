@@ -167,11 +167,16 @@ def test_recolour_preimage_enumerates_candidate_colours():
         assert rule.apply(pre) == t  # every candidate is a genuine preimage
 
 
-def test_delete_preimage_is_deliberately_empty():
+def test_delete_preimage_is_catalogue_bounded():
     rule = ObjectRule(Smallest(), dowhat.Delete())
     s = parse_grid(T("330", "000", "005"))
     t = rule.apply(s)
-    assert list(rule.preimage(t)) == []
+    preimages = list(rule.preimage(t))
+    assert preimages  # the documented wall is gone (M9: bounded hypothesis space)
+    assert all(rule.apply(pre) == t for pre in preimages)
+    # ... but bounded honestly: the true origin's colour (5) is outside the
+    # surviving palette {3}, so it lies beyond this catalogue
+    assert s not in preimages
 
 
 # --------------------------------------------------- ASP cross-check (NAF)
