@@ -1,0 +1,7 @@
+include LICENSE README.md pyproject.toml
+graft src/twinworld
+graft tests
+graft examples
+graft docs
+exclude examples/report_*.html
+global-exclude __pycache__ *.py[cod]
