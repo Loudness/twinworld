@@ -3,7 +3,7 @@
 The comparison subject for the thesis's "another way to measure intelligence"
 claim: the LLM sees the same demonstration pairs as the symbolic solver and
 must emit the test output grid. Defaults target a llama.cpp/ollama-style
-server; override with DOWHAT_LLM_URL / DOWHAT_LLM_MODEL. Reasoning models are
+server; override with TWINWORLD_LLM_URL / TWINWORLD_LLM_MODEL. Reasoning models are
 handled by reading the final ``content`` field only.
 """
 
@@ -17,8 +17,8 @@ import urllib.request
 from ..engine import Task
 from ..representation import Grid, as_grid
 
-DEFAULT_URL = os.environ.get("DOWHAT_LLM_URL", "http://localhost:11434/v1/chat/completions")
-DEFAULT_MODEL = os.environ.get("DOWHAT_LLM_MODEL", "qwen")
+DEFAULT_URL = os.environ.get("TWINWORLD_LLM_URL", "http://localhost:11434/v1/chat/completions")
+DEFAULT_MODEL = os.environ.get("TWINWORLD_LLM_MODEL", "qwen")
 
 
 def grid_text(grid: Grid) -> str:

@@ -1,4 +1,4 @@
-# dowhat
+# twinworld
 
 Counterfactual reasoning and explanation over **symbolic state-transition traces** — a
 [DoWhy](https://github.com/py-why/dowhy)-style staged API (`model → identify → compute → refute`)
@@ -9,25 +9,38 @@ First domain: the [ARC challenge](https://github.com/fchollet/ARC-AGI). The solv
 non-connectionist (no neural networks, no LLMs); neural components can plug in later through the
 backend registry without touching the core.
 
+## Installation
+
+```bash
+pip install twinworld           # core: pure Python + networkx, no datasets
+pip install 'twinworld[arc]'    # + the bundled ARC corpus via arckit (~16 MB)
+pip install 'twinworld[asp]'    # + the clingo ASP solver backend
+```
+
+Requires Python ≥ 3.11. The core installs no data; the ARC corpus arrives only
+with the `arc` extra, and the GPL-licensed CausalARC evaluation set is never
+distributed — `twinworld.domains.causalarc` fetches it at runtime into
+`~/.cache/twinworld` when you ask for it.
+
 ## Pipeline
 
 ```python
-import dowhat
+import twinworld
 
-rep = dowhat.model(task)                      # fit under every abstraction; shortest program wins
-query = dowhat.Interventional(step=1, alternative=...)
-identified = dowhat.identify(rep, query)      # structural well-posedness check
-cfs = dowhat.compute(identified)              # twin-world counterfactuals + per-item metrics
-report = dowhat.refute(rep)                   # placebo-intervention battery
+rep = twinworld.model(task)                      # fit under every abstraction; shortest program wins
+query = twinworld.Interventional(step=1, alternative=...)
+identified = twinworld.identify(rep, query)      # structural well-posedness check
+cfs = twinworld.compute(identified)              # twin-world counterfactuals + per-item metrics
+report = twinworld.refute(rep)                   # placebo-intervention battery
 
 # segmentation is a recorded, revisable decision — so it is intervenable too:
-dowhat.compute(dowhat.identify(rep, dowhat.Representational("mcc")))
+twinworld.compute(twinworld.identify(rep, twinworld.Representational("mcc")))
 
 # contrastive: why this outcome and not that one? Answered by the smallest
 # program-edit set reaching the foil — CERTIFIED minimal (search is exhaustive
 # per k) — or by a certificate that the foil is unreachable, with a
 # Chockler-Halpern responsibility profile over the program's steps.
-cfs = dowhat.compute(dowhat.identify(rep, dowhat.Contrastive(foil_grid, on="test[0]")))
+cfs = twinworld.compute(twinworld.identify(rep, twinworld.Contrastive(foil_grid, on="test[0]")))
 cfs.responsibility  # e.g. {0: 0.5, 1: 0.5}
 ```
 
@@ -35,11 +48,11 @@ Because the domain is deterministic, counterfactual claims here are **certificat
 not estimates** — validated on a generated benchmark whose latent programs are
 known by construction (100% recovery, minimality gap 0). And programs that fit
 the demonstrations but are not behaviourally unique are detected *before* the
-test pair is consulted: `dowhat.discriminate.diagnose` groups all fitting
+test pair is consulted: `twinworld.discriminate.diagnose` groups all fitting
 programs into counterfactual-probe equivalence classes and exhibits the probe
 on which they part ways.
 
-The generality claim is substantiated, not asserted: `dowhat.domains.blocks`
+The generality claim is substantiated, not asserted: `twinworld.domains.blocks`
 runs the identical core on **blocks world** — the canonical STRIPS planning
 domain — where the domain plugin supplies only a perception adapter and a
 `MoveBlock` primitive with real preconditions and gravity (the same move
@@ -54,7 +67,7 @@ transform) steps with negation-as-failure in the search space, object
 dynamics as ASP rules, and every answer set verified through the exact
 engine (ASP proposes, the engine disposes; the solid/separated-object
 fragment is declared, and fragment mismatches are counted, never accepted).
-And `dowhat.assess` / `dowhat.predict` turn underdetermination diagnosis into
+And `twinworld.assess` / `twinworld.predict` turn underdetermination diagnosis into
 a **confidence gate**: hypotheses that fit the demonstrations are grouped
 into behavioural classes and applied to the test input — one class (or
 unanimity) gates high, disagreement gates low and `predict` abstains with the
@@ -64,14 +77,14 @@ Whether counterfactual discrimination actually improves test accuracy on
 failure class 3 — the proposal's most testable hypothesis — is now measured
 (`examples/discrimination_report.py`, controlled ambiguous tasks where
 Largest ≡ ByColour on every demonstration and the readings part ways on the
-held-out test). **Passively**, no selection policy (`dowhat.select`: first /
+held-out test). **Passively**, no selection policy (`twinworld.select`: first /
 random / shortest / largest-class / probe-stability / fewest-absences) beats
 the pre-registered 50% ceiling on the symmetric collision (measured 0.40–0.57
 over 30 instances), and in a declared colour-favoured world only prior-aligned
 policies reach 0.70 — so the gate's calibrated abstention (30/30 answered with
 zero errors on benign ambiguity) remains the library default. **Actively**,
 the picture flips: answering the single diagnosing probe that
-`dowhat.discriminate` exhibits lifts accuracy from 16/30 to **30/30 with one
+`twinworld.discriminate` exhibits lifts accuracy from 16/30 to **30/30 with one
 query**, while the same query spent on a random extra demonstration reaches
 only 27/30 and fails to break the collision 14/30 times — counterfactual
 discrimination improves test accuracy exactly when it can *ask*, because the
@@ -84,7 +97,7 @@ never proposed.
 Abduction now runs backwards through *deletions*: `Delete` preimages enumerate
 a bounded hypothesis space over what could have been erased (small shapes,
 selector-pinned colours, separated placements), each candidate verified by
-exact re-application, and `dowhat.engine.abduce_inputs` chains preimages
+exact re-application, and `twinworld.engine.abduce_inputs` chains preimages
 right-to-left — the proposal's "time travel backwards", working through
 non-invertible steps. How that enumeration scales is measured, not guessed
 (`examples/abduction_scaling.py`, ground-truth instances): the historical
@@ -104,20 +117,20 @@ agreement is exact where induction recovers the latent program (L2: 27/27),
 and every disagreement is observational equivalence failing to survive
 interventions — underdetermination, not engine error. The
 [CausalARC](https://huggingface.co/datasets/jmaasch/causal_arc) benchmark
-(Maasch et al. 2025) loads through `dowhat.domains.causalarc` (runtime-fetched
+(Maasch et al. 2025) loads through `twinworld.domains.causalarc` (runtime-fetched
 evaluation data, GPL — never vendored, SCM sources never executed), and a
-local-LLM baseline (`dowhat.baselines.llm`, any OpenAI-compatible endpoint)
+local-LLM baseline (`twinworld.baselines.llm`, any OpenAI-compatible endpoint)
 supports the head-to-head and CausalARC's counterfactual-feedback setting
 (`examples/llm_baseline.py`).
 
 Negation runs through the library three ways (thesis Experiment 4): `Not(...)`
 selectors in the rule language ("recolour everything *except* the largest" —
 which solved an ARC task no positive selector could, at the measured cost of
-more underdetermined fits); `dowhat.PertinentNegative` — what must be minimally
+more underdetermined fits); `twinworld.PertinentNegative` — what must be minimally
 *absent* for the outcome to hold, answered with catalogue-bounded certificates
 (and doubling as a discriminator: fragile size-based hypotheses have absence
 dependencies that colour-based ones lack); and an optional ASP cross-check
-(`pip install dowhat[asp]`) where clingo re-derives every selector under
+(`pip install twinworld[asp]`) where clingo re-derives every selector under
 negation-as-failure and must agree with the Python semantics.
 
 Three abstraction schemes ship today (`cc4`, `cc8`, `mcc` — colour-blind composites);
@@ -134,7 +147,7 @@ train-fitting programs that fail the held-out test are reported as
 *underdetermined*, not solved — that gap is a research target, not noise.
 
 The concept network behind that machinery is now **data, not code**
-(`dowhat.concepts`): `learn_concepts` estimates the attribute weights, five
+(`twinworld.concepts`): `learn_concepts` estimates the attribute weights, five
 per-relation weights, and slippage probabilities from a corpus using
 leave-one-attribute-out anchoring (colour statistics only from shape-anchored
 correspondences and vice versa — never circular), and `ConceptNet` carries
@@ -144,7 +157,7 @@ intuitions — shape is the *least* reliable attribute (weight 4.0 → 0.27; tru
 correspondences change shape 42% of the time) while location is far more
 informative than assumed (1.0 → 2.82) — yet every known solve survives and
 the learned rule-family priors cut median programs-tried from 2 to 1. A
-second, Copycat-style correspondence backend (`dowhat.copycat`: temperature,
+second, Copycat-style correspondence backend (`twinworld.copycat`: temperature,
 annealed repair, slippage licensed by the learned slips;
 `model(mapper="copycat"|"both")`) answers the digest's compose-or-compete
 question empirically: on this corpus at this vocabulary they **coincide** —
@@ -165,17 +178,40 @@ counterfactual re-segmentation, the confidence gate and the refutation battery.
 ```bash
 python examples/visual_report.py a79310a0 --open   # write + open one report
 python examples/visual_report.py --blocks --open   # blocks world, no arckit needed
-python -m dowhat.viz                               # browse ARC at http://127.0.0.1:8008
-                                                   # (tasks fit on first click, cached)
+python -m twinworld.viz                               # browse ARC at http://127.0.0.1:8008
+                                                   # (tasks fit on first click, cached;
+                                                   #  --scan pre-fits all at startup)
 ```
 
-From code: `dowhat.viz.full_report(task) -> str` (pass `foil=` for a contrastive
+From code: `twinworld.viz.full_report(task) -> str` (pass `foil=` for a contrastive
 section), plus `save_report`, `show`, and the grid/state/trace renderers for
 composing custom pages. Works on any `Task`; only the corpus server needs the
 `arc` extra. Most ARC tasks are outside the current rule vocabulary — the index
 links known-fitting starters and marks fit status as you browse, and a no-fit
 page still shows the demonstrations and segmentations (the honest corpus rate,
 not an error).
+
+## Using twinworld in your own domain
+
+The core is domain-generic within an honest boundary: **deterministic,
+fully-observable problems whose states render as 2D integer grids with colour
+ids 0–9** (`twinworld.representation.MAX_COLOURS`; background is inferred as
+the most frequent colour, ties to 0). A domain plugin owes the core exactly
+three things — [domains/blocks.py](src/twinworld/domains/blocks.py) is the
+complete ~150-line worked template:
+
+1. a **perception adapter** mapping your states to `Grid`/`Task`
+   (blocks world: `build_grid`, `towers_of`, `task_from_towers`);
+2. **mechanism primitives** — frozen dataclasses with `apply(state)`,
+   `preimage(state, budget)` and an `exact_preimage` flag; real preconditions
+   welcome (`MoveBlock` has clearance checks and gravity);
+3. a **candidate generator** enumerating the task-scoped primitive vocabulary
+   (`candidate_moves(task)`).
+
+Everything else comes free and unchanged: program induction, twin-world
+interventions, backtracking, certified-minimal contrastives, pertinent
+negatives, the underdetermination gate, the refuters, and the HTML
+visualization.
 
 ## Development
 

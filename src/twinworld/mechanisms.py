@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from itertools import combinations
 from typing import Iterator, Protocol, runtime_checkable
 
-from .representation import Obj, StateGraph, as_grid, parse_grid
+from .representation import MAX_COLOURS, Obj, StateGraph, as_grid, parse_grid
 
 
 @dataclass(frozen=True)
@@ -338,10 +338,10 @@ class ObjectRule:
                 originals = [self.selector.colour]
             elif isinstance(self.selector, Not) and isinstance(self.selector.inner, ByColour):
                 originals = [
-                    c for c in range(10) if c not in (self.selector.inner.colour, target)
+                    c for c in range(MAX_COLOURS) if c not in (self.selector.inner.colour, target)
                 ]
             else:
-                originals = [c for c in range(10) if c != target]
+                originals = [c for c in range(MAX_COLOURS) if c != target]
             for k in range(1, len(uniform) + 1):
                 for flipped in combinations(uniform, k):
                     kept = [o for o in s.objects if o not in flipped]
@@ -368,7 +368,7 @@ class ObjectRule:
             colours = [self.selector.colour]
         elif isinstance(self.selector, Not) and isinstance(self.selector.inner, ByColour):
             colours = [
-                c for c in range(1, 10)
+                c for c in range(1, MAX_COLOURS)
                 if c not in (self.selector.inner.colour, s.background)
             ]
         else:

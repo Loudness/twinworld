@@ -2,7 +2,7 @@
 
 Copycat's Slipnet was hand-coded and never learned (Hofstadter & Mitchell
 1994; Mitchell 2021); this library's analog — the attribute weights in
-:func:`~dowhat.representation.attribute_score`, the uniform relation weight,
+:func:`~twinworld.representation.attribute_score`, the uniform relation weight,
 and the unordered rule-candidate vocabulary — has been hand-coded too. Here
 those numbers become DATA: :func:`learn_concepts` estimates them from a task
 corpus and :class:`ConceptNet` carries them explicitly (JSON-serializable, per
@@ -14,7 +14,7 @@ anchored by shape alone; shape statistics only from pairs anchored by colour
 alone), never by the scores being learned. Weights are clipped log-odds of
 agreement on anchored pairs versus random cross pairs. Slips — the corpus
 probability that a TRUE correspondence changes an attribute — quantify
-Copycat's slippage for :func:`dowhat.copycat.copycat_map`. Rule-family priors
+Copycat's slippage for :func:`twinworld.copycat.copycat_map`. Rule-family priors
 only reorder induced candidates; the engine remains the verifier.
 """
 

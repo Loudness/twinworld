@@ -1,9 +1,9 @@
 from conftest import T
 
-from dowhat import Recolor, Task, Translate, candidate_primitives, parse_grid
-from dowhat.engine import intervene, solve
-from dowhat.metrics import evaluate, proximity, sparsity, validity
-from dowhat.refute import refutation_battery
+from twinworld import Recolor, Task, Translate, candidate_primitives, parse_grid
+from twinworld.engine import intervene, solve
+from twinworld.metrics import evaluate, proximity, sparsity, validity
+from twinworld.refute import refutation_battery
 
 
 def fit(task, max_depth=2):

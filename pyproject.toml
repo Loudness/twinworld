@@ -1,20 +1,42 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dowhat"
-version = "0.0.1"
-description = "Counterfactual reasoning and explanation over symbolic state-transition traces, with the ARC challenge as first domain"
+name = "twinworld"
+version = "0.1.0"
+description = "Counterfactual reasoning and explanation over symbolic state-transition traces — twin-world forking, certified minimal contrastives, and a DoWhy-style staged API; ARC and blocks world as first domains"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
 authors = [{ name = "Aries" }]
-keywords = ["counterfactuals", "causality", "explainability", "neuro-symbolic", "ARC"]
+keywords = [
+    "counterfactuals",
+    "causality",
+    "causal-inference",
+    "explainability",
+    "neuro-symbolic",
+    "twin-world",
+    "ARC",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "networkx>=3.0",
-    "numpy>=1.26",
 ]
+
+[project.urls]
+# TODO(release): point at the public repository once it exists
+Homepage = "https://github.com/OWNER/twinworld"
+Repository = "https://github.com/OWNER/twinworld"
+Issues = "https://github.com/OWNER/twinworld/issues"
 
 [project.optional-dependencies]
 arc = ["arckit>=0.1"]
@@ -23,6 +45,9 @@ dev = ["pytest>=8", "ruff>=0.4"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+twinworld = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

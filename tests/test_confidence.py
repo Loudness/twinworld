@@ -3,8 +3,8 @@
 import pytest
 from conftest import T
 
-import dowhat
-from dowhat import Task
+import twinworld
+from twinworld import Task
 
 
 @pytest.fixture
@@ -27,13 +27,13 @@ def treacherous_task() -> Task:
 
 
 def test_gate_low_when_classes_disagree_on_test(treacherous_task):
-    rep = dowhat.model(treacherous_task)
-    report = dowhat.assess(rep)
+    rep = twinworld.model(treacherous_task)
+    report = twinworld.assess(rep)
     assert report.underdetermined
     assert not report.unanimous_on_test
     assert report.confidence == "low"
     assert len(set(report.predictions)) >= 2  # genuinely different test answers
-    prediction, _ = dowhat.predict(rep)
+    prediction, _ = twinworld.predict(rep)
     assert prediction is None  # abstention
 
 
@@ -48,19 +48,19 @@ def test_gate_high_despite_ambiguity_when_test_is_unanimous():
         test=((T("000022", "000000", "300000"), T("000055", "000000", "300000")),),
         task_id="synthetic-unanimous",
     )
-    rep = dowhat.model(task)
-    report = dowhat.assess(rep)
+    rep = twinworld.model(task)
+    report = twinworld.assess(rep)
     assert report.underdetermined  # the ambiguity is real ...
     assert report.unanimous_on_test  # ... but harmless for THIS test input
     assert report.confidence == "high"
-    prediction, _ = dowhat.predict(rep)
-    assert prediction == (dowhat.as_grid(task.test[0][1]),)
+    prediction, _ = twinworld.predict(rep)
+    assert prediction == (twinworld.as_grid(task.test[0][1]),)
 
 
 def test_gate_high_when_determined(three_way_move_task):
-    rep = dowhat.model(three_way_move_task)
-    report = dowhat.assess(rep)
+    rep = twinworld.model(three_way_move_task)
+    report = twinworld.assess(rep)
     assert not report.underdetermined
     assert report.confidence == "high"
-    prediction, _ = dowhat.predict(rep)
-    assert prediction == (dowhat.as_grid(three_way_move_task.test[0][1]),)
+    prediction, _ = twinworld.predict(rep)
+    assert prediction == (twinworld.as_grid(three_way_move_task.test[0][1]),)

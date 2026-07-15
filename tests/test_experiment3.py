@@ -6,8 +6,8 @@ import random
 import pytest
 from conftest import T
 
-import dowhat
-from dowhat import (
+import twinworld
+from twinworld import (
     ByColour,
     Contrastive,
     IdentificationError,
@@ -16,21 +16,21 @@ from dowhat import (
     RecolourTo,
     induce_rules,
 )
-from dowhat.benchmark import generate_task, random_task
-from dowhat.discriminate import diagnose, probes
-from dowhat.engine import solve_all
-from dowhat.metrics import diversity, edited_steps, responsibility_profile
+from twinworld.benchmark import generate_task, random_task
+from twinworld.discriminate import diagnose, probes
+from twinworld.engine import solve_all
+from twinworld.metrics import diversity, edited_steps, responsibility_profile
 
 
 # ----------------------------------------------------- contrastive: k=1 case
 
 
 def test_contrastive_k1_certified(move_recolor_task):
-    rep = dowhat.model(move_recolor_task)
+    rep = twinworld.model(move_recolor_task)
     # foil: the bar ends colour 7 instead of 6 (7 is in the task palette, so
     # the pool contains a mechanism that can produce it — reachable by design)
     target = T("0000", "0770", "0000", "0007")
-    cfs = dowhat.compute(dowhat.identify(rep, Contrastive(target, on="train[0]")))
+    cfs = twinworld.compute(twinworld.identify(rep, Contrastive(target, on="train[0]")))
     assert cfs.items
     for item in cfs.items:
         assert item.metrics.sparsity == 1
@@ -44,11 +44,11 @@ def test_contrastive_k1_certified(move_recolor_task):
 
 
 def test_contrastive_k2_certified(three_way_move_task):
-    rep = dowhat.model(three_way_move_task)
+    rep = twinworld.model(three_way_move_task)
     # foil: colour 2 moves DOWN and colour 6 moves RIGHT; colour 3 as factual.
     # No single edit can change two colours' motions, so k=2 is forced.
     target = T("00000", "20000", "00300", "00006", "00000")
-    cfs = dowhat.compute(dowhat.identify(rep, Contrastive(target, on="train[0]")))
+    cfs = twinworld.compute(twinworld.identify(rep, Contrastive(target, on="train[0]")))
     assert cfs.items
     for item in cfs.items:
         assert item.metrics.sparsity == 2
@@ -61,9 +61,9 @@ def test_contrastive_k2_certified(three_way_move_task):
 
 
 def test_contrastive_unreachable_is_certified(recolor_task):
-    rep = dowhat.model(recolor_task, max_depth=1)
+    rep = twinworld.model(recolor_task, max_depth=1)
     target = T("99999", "99999", "99999", "99999", "99999")
-    cfs = dowhat.compute(dowhat.identify(rep, Contrastive(target, on="train[0]")))
+    cfs = twinworld.compute(twinworld.identify(rep, Contrastive(target, on="train[0]")))
     (item,) = cfs.items
     assert not item.metrics.applicable
     assert "robust" in item.narrative and "certified" in item.narrative
@@ -71,23 +71,23 @@ def test_contrastive_unreachable_is_certified(recolor_task):
 
 
 def test_contrastive_identify_errors(recolor_task):
-    rep = dowhat.model(recolor_task, max_depth=1)
+    rep = twinworld.model(recolor_task, max_depth=1)
     factual_out = rep.solution.train_traces[0].outcome.grid
     with pytest.raises(IdentificationError, match="factual outcome"):
-        dowhat.identify(rep, Contrastive(factual_out, on="train[0]"))
+        twinworld.identify(rep, Contrastive(factual_out, on="train[0]"))
     with pytest.raises(IdentificationError, match="does not exist"):
-        dowhat.identify(rep, Contrastive(factual_out, on="train[9]"))
+        twinworld.identify(rep, Contrastive(factual_out, on="train[9]"))
     with pytest.raises(IdentificationError, match="trace reference"):
-        dowhat.identify(rep, Contrastive(factual_out, on="banana"))
+        twinworld.identify(rep, Contrastive(factual_out, on="banana"))
 
 
 # --------------------------------------------------- metrics building blocks
 
 
 def test_edited_steps_and_diversity(recolor_task):
-    from dowhat.engine import intervene
+    from twinworld.engine import intervene
 
-    sol = dowhat.model(recolor_task, max_depth=1).solution
+    sol = twinworld.model(recolor_task, max_depth=1).solution
     trace = sol.train_traces[0]
     cf9 = intervene(sol, trace, 0, Recolor(3, 9))
     cf7 = intervene(sol, trace, 0, Recolor(3, 7))
@@ -98,9 +98,9 @@ def test_edited_steps_and_diversity(recolor_task):
 
 
 def test_responsibility_profile_takes_max_over_sets(recolor_task):
-    from dowhat.engine import intervene
+    from twinworld.engine import intervene
 
-    sol = dowhat.model(recolor_task, max_depth=1).solution
+    sol = twinworld.model(recolor_task, max_depth=1).solution
     trace = sol.train_traces[0]
     cf = intervene(sol, trace, 0, Recolor(3, 9))
     assert responsibility_profile([cf]) == {0: 1.0}
@@ -115,7 +115,7 @@ def test_solve_all_finds_the_competing_hypotheses(ambiguous_task):
     fits = solve_all(ambiguous_task, rules, max_depth=1)
     # at least the colour-based and the size-based readings both fit
     assert (ObjectRule(ByColour(2), RecolourTo(5)),) in fits
-    assert (ObjectRule(dowhat.Largest(), RecolourTo(5)),) in fits
+    assert (ObjectRule(twinworld.Largest(), RecolourTo(5)),) in fits
     assert len(fits) >= 2
 
 
@@ -144,7 +144,7 @@ def test_probes_are_deterministic(recolor_task):
     assert probes(recolor_task) == probes(recolor_task)
     # base train inputs are always included
     grids = probes(recolor_task)
-    assert dowhat.as_grid(recolor_task.train[0][0]) in grids
+    assert twinworld.as_grid(recolor_task.train[0][0]) in grids
 
 
 # ------------------------------------------------- ground-truth benchmark
@@ -171,8 +171,8 @@ def test_benchmark_end_to_end_minimality_gap_zero():
             continue
         task, latent = instance
         try:
-            rep = dowhat.model(task)
-        except dowhat.UnsolvedTaskError:
+            rep = twinworld.model(task)
+        except twinworld.UnsolvedTaskError:
             continue
         # foil: outcome of a one-edit variant of the induced program, using a
         # mechanism FROM the contrastive pool, so the true minimal k is 1 by
@@ -191,8 +191,8 @@ def test_benchmark_end_to_end_minimality_gap_zero():
                 break
         if alt is None:
             continue
-        cfs = dowhat.compute(
-            dowhat.identify(rep, Contrastive(alt.outcome.grid, on="train[0]"))
+        cfs = twinworld.compute(
+            twinworld.identify(rep, Contrastive(alt.outcome.grid, on="train[0]"))
         )
         assert cfs.items and cfs.items[0].metrics.applicable
         assert all(i.metrics.sparsity == 1 for i in cfs.items)  # minimality gap 0

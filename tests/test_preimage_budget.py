@@ -4,12 +4,12 @@ verifier; ground-truth abduction instances round-trip."""
 
 import random
 
-import dowhat
+import twinworld
 from conftest import T
-from dowhat import ByColour, Delete, ObjectRule, parse_grid
-from dowhat.benchmark import random_delete_instance
-from dowhat.engine import abduce_inputs
-from dowhat.mechanisms import DEFAULT_PREIMAGE_BUDGET, PreimageBudget
+from twinworld import ByColour, Delete, ObjectRule, parse_grid
+from twinworld.benchmark import random_delete_instance
+from twinworld.engine import abduce_inputs
+from twinworld.mechanisms import DEFAULT_PREIMAGE_BUDGET, PreimageBudget
 
 
 def _observed():
@@ -35,7 +35,7 @@ def test_small_budget_shrinks_and_still_verifies():
 
 
 def test_budget_threads_through_abduce_inputs(denoise_task):
-    rep = dowhat.model(denoise_task)
+    rep = twinworld.model(denoise_task)
     trace = rep.solution.train_traces[0]
     default = abduce_inputs(rep.solution.program, trace.outcome, limit=128)
     assert trace.states[0] in default  # the M9 recovery still holds

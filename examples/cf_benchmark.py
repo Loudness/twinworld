@@ -16,10 +16,10 @@ import random
 import statistics
 import sys
 
-from dowhat import Contrastive, UnsolvedTaskError, compute, identify, induce_rules, model
-from dowhat.benchmark import random_task
-from dowhat.discriminate import diagnose, probes, signature
-from dowhat.engine import ApplyCache, solve_all
+from twinworld import Contrastive, UnsolvedTaskError, compute, identify, induce_rules, model
+from twinworld.benchmark import random_task
+from twinworld.discriminate import diagnose, probes, signature
+from twinworld.engine import ApplyCache, solve_all
 
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 40
 rng = random.Random(0)

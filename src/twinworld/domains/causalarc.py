@@ -22,7 +22,7 @@ BASE_URL = (
     "https://huggingface.co/datasets/jmaasch/causal_arc/resolve/main/"
     "static_evaluation_set/v0_09-01-25/{category}/causal_arc_{category}.json"
 )
-CACHE_DIR = Path("~/.cache/dowhat").expanduser()
+CACHE_DIR = Path("~/.cache/twinworld").expanduser()
 
 
 @dataclass(frozen=True)

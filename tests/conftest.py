@@ -1,6 +1,6 @@
 import pytest
 
-from dowhat import Task, as_grid
+from twinworld import Task, as_grid
 
 
 def T(*rows: str):

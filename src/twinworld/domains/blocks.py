@@ -1,6 +1,6 @@
 """Blocks-world domain adapter — the non-ARC generality proof.
 
-The canonical STRIPS planning domain rendered into dowhat's substrate: columns
+The canonical STRIPS planning domain rendered into twinworld's substrate: columns
 are stack positions with gravity pointing down the grid, each block is a
 1-cell object with a unique colour, and the only mechanism is MoveBlock —
 which, unlike every ARC mechanism, has *preconditions* (the block must be

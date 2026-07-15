@@ -3,8 +3,8 @@
 import pytest
 from conftest import T
 
-import dowhat
-from dowhat import ByColour, IdentificationError, ObjectRule, Representational, Task, TranslateBy
+import twinworld
+from twinworld import ByColour, IdentificationError, ObjectRule, Representational, Task, TranslateBy
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def composite_task() -> Task:
 
 
 def test_model_records_all_abstractions(recolor_task):
-    rep = dowhat.model(recolor_task, max_depth=1)
+    rep = twinworld.model(recolor_task, max_depth=1)
     # a plain recolour is representation-independent: every scheme solves it
     assert set(rep.solutions) == {"cc4", "cc8", "mcc"}
     assert rep.failures == {}
@@ -36,15 +36,15 @@ def test_model_records_all_abstractions(recolor_task):
 
 
 def test_model_selects_the_only_working_abstraction(composite_task):
-    rep = dowhat.model(composite_task, max_depth=1, analogy_depth=1)
+    rep = twinworld.model(composite_task, max_depth=1, analogy_depth=1)
     assert rep.abstraction == "mcc"
     assert rep.solution.program == (ObjectRule(ByColour(2), TranslateBy(0, 1)),)
     assert set(rep.failures) == {"cc4", "cc8"}
 
 
 def test_resegmentation_robust_when_alternative_solves(recolor_task):
-    rep = dowhat.model(recolor_task, max_depth=1)
-    cfs = dowhat.compute(dowhat.identify(rep, Representational("mcc")))
+    rep = twinworld.model(recolor_task, max_depth=1)
+    cfs = twinworld.compute(twinworld.identify(rep, Representational("mcc")))
     (item,) = cfs.items
     assert item.metrics.validity is True
     assert item.metrics.proximity == 0.0  # same outcome, re-derived under mcc
@@ -52,8 +52,8 @@ def test_resegmentation_robust_when_alternative_solves(recolor_task):
 
 
 def test_resegmentation_load_bearing_when_alternative_fails(composite_task):
-    rep = dowhat.model(composite_task, max_depth=1, analogy_depth=1)
-    cfs = dowhat.compute(dowhat.identify(rep, Representational("cc4")))
+    rep = twinworld.model(composite_task, max_depth=1, analogy_depth=1)
+    cfs = twinworld.compute(twinworld.identify(rep, Representational("cc4")))
     (item,) = cfs.items
     assert item.metrics.validity is False
     assert not item.metrics.applicable
@@ -61,16 +61,16 @@ def test_resegmentation_load_bearing_when_alternative_fails(composite_task):
 
 
 def test_resegmentation_lazy_solve_for_unattempted_abstraction(recolor_task):
-    rep = dowhat.model(recolor_task, abstractions=("cc4",), max_depth=1)
+    rep = twinworld.model(recolor_task, abstractions=("cc4",), max_depth=1)
     assert "mcc" not in rep.solutions
-    cfs = dowhat.compute(dowhat.identify(rep, Representational("mcc")))
+    cfs = twinworld.compute(twinworld.identify(rep, Representational("mcc")))
     assert cfs.items[0].metrics.validity is True
     assert "mcc" in rep.solutions  # cached after the lazy refit
 
 
 def test_identify_rejects_unknown_and_factual_abstraction(recolor_task):
-    rep = dowhat.model(recolor_task, max_depth=1)
+    rep = twinworld.model(recolor_task, max_depth=1)
     with pytest.raises(IdentificationError, match="unknown abstraction"):
-        dowhat.identify(rep, Representational("voxels"))
+        twinworld.identify(rep, Representational("voxels"))
     with pytest.raises(IdentificationError, match="factual"):
-        dowhat.identify(rep, Representational(rep.abstraction))
+        twinworld.identify(rep, Representational(rep.abstraction))

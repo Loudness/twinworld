@@ -2,18 +2,18 @@
 
 import pytest
 
-import dowhat
-from dowhat import Contrastive, PertinentNegative, UnsolvedTaskError
-from dowhat.discriminate import diagnose
-from dowhat.domains.blocks import (
+import twinworld
+from twinworld import Contrastive, PertinentNegative, UnsolvedTaskError
+from twinworld.discriminate import diagnose
+from twinworld.domains.blocks import (
     MoveBlock,
     build_grid,
     candidate_moves,
     task_from_towers,
     towers_of,
 )
-from dowhat.engine import solve_all
-from dowhat.representation import parse_grid
+from twinworld.engine import solve_all
+from twinworld.representation import parse_grid
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def stack_task():
 
 
 def plan(task):
-    return dowhat.model(task, primitives=candidate_moves(task), induction="never", max_depth=2)
+    return twinworld.model(task, primitives=candidate_moves(task), induction="never", max_depth=2)
 
 
 def test_grid_round_trip():
@@ -72,13 +72,13 @@ def test_arc_vocabulary_cannot_express_gravity(stack_task):
     the destination stack), so no translation-based rule fits — the domain
     mechanism is genuinely necessary."""
     with pytest.raises(UnsolvedTaskError):
-        dowhat.model(stack_task)
+        twinworld.model(stack_task)
 
 
 def test_contrastive_why_here_and_not_there(stack_task):
     rep = plan(stack_task)
     foil = build_grid([[], [5, 2, 1], []])  # what if block 1 were ON block 2?
-    cfs = dowhat.compute(dowhat.identify(rep, Contrastive(foil, on="test[0]")))
+    cfs = twinworld.compute(twinworld.identify(rep, Contrastive(foil, on="test[0]")))
     assert cfs.items
     assert all(item.metrics.sparsity == 1 for item in cfs.items)
     assert cfs.responsibility == {0: 0.0, 1: 1.0}  # only the final placement
@@ -87,8 +87,8 @@ def test_contrastive_why_here_and_not_there(stack_task):
 
 def test_pertinent_negatives_expose_plan_presuppositions(stack_task):
     rep = plan(stack_task)
-    pn = dowhat.compute(
-        dowhat.identify(
+    pn = twinworld.compute(
+        twinworld.identify(
             rep,
             PertinentNegative(max_cells=1, separated=False, colours=(9,), max_witnesses=8),
         )

@@ -4,7 +4,7 @@ reorder candidates."""
 
 from conftest import T
 
-from dowhat import (
+from twinworld import (
     DEFAULT_CONCEPTS,
     ByColour,
     ConceptNet,
@@ -16,9 +16,9 @@ from dowhat import (
     parse_grid,
     structure_map,
 )
-from dowhat.concepts import load_concepts, rule_family, save_concepts
-from dowhat.mechanisms import Not
-from dowhat.representation import attribute_score
+from twinworld.concepts import load_concepts, rule_family, save_concepts
+from twinworld.mechanisms import Not
+from twinworld.representation import attribute_score
 
 
 def test_default_concepts_reproduce_hand_scores():

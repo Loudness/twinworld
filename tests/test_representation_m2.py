@@ -2,7 +2,7 @@
 
 from conftest import T
 
-from dowhat import Recolor, match_objects, parse_grid
+from twinworld import Recolor, match_objects, parse_grid
 
 
 def test_cc8_joins_diagonals_cc4_does_not():

@@ -1,8 +1,8 @@
 import pytest
 from conftest import T
 
-from dowhat import Recolor, Translate, UnsolvedTaskError, as_grid, candidate_primitives
-from dowhat.engine import backtrack, intervene, solve
+from twinworld import Recolor, Translate, UnsolvedTaskError, as_grid, candidate_primitives
+from twinworld.engine import backtrack, intervene, solve
 
 
 def fit(task, max_depth=2):

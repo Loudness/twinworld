@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from .engine import Solution, backtrack
 from .mechanisms import ByColour, Not, ObjectRule, Recolor, RecolourTo, Translate
-from .representation import Obj, StateGraph, as_grid
+from .representation import MAX_COLOURS, Obj, StateGraph, as_grid
 
 
 @dataclass(frozen=True)
@@ -43,20 +43,20 @@ def referenced_colours(solution: Solution) -> set[int]:
             refs |= {mech.src, mech.dst}
         elif isinstance(mech, Translate):
             if mech.colour is None:
-                return set(range(10))  # moves everything: no colour is irrelevant
+                return set(range(MAX_COLOURS))  # moves everything: no colour is irrelevant
             refs.add(mech.colour)
         elif isinstance(mech, ObjectRule):
             sel = mech.selector
             if isinstance(sel, ByColour):
                 refs.add(sel.colour)
             elif isinstance(sel, Not) and isinstance(sel.inner, ByColour):
-                refs |= set(range(10)) - {sel.inner.colour}  # touches all BUT c
+                refs |= set(range(MAX_COLOURS)) - {sel.inner.colour}  # touches all BUT c
             else:
-                return set(range(10))  # All/Largest/Smallest/Not may touch anything
+                return set(range(MAX_COLOURS))  # All/Largest/Smallest/Not may touch anything
             if isinstance(mech.transform, RecolourTo):
                 refs.add(mech.transform.colour)
         else:
-            return set(range(10))  # unknown mechanism: assume nothing is irrelevant
+            return set(range(MAX_COLOURS))  # unknown mechanism: assume nothing is irrelevant
     return refs
 
 
@@ -74,7 +74,7 @@ def placebo_intervention(solution: Solution) -> RefutationRow:
             continue
         target = spectators[0]
         free_colours = [
-            c for c in range(10)
+            c for c in range(MAX_COLOURS)
             if c not in refs and c != target.colour and c != start.background
         ]
         if not free_colours:

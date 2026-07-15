@@ -1,9 +1,9 @@
 """ARC domain adapter: the first (and reference) domain plugin.
 
 A domain plugin owes the core exactly two things — a perception adapter
-(here: arckit grids → :class:`dowhat.Task`) and a primitive vocabulary
+(here: arckit grids → :class:`twinworld.Task`) and a primitive vocabulary
 (the core's task-scoped ``candidate_primitives`` for the slice).
-Requires the ``arc`` extra: ``pip install dowhat[arc]``.
+Requires the ``arc`` extra: ``pip install twinworld[arc]``.
 """
 
 from __future__ import annotations

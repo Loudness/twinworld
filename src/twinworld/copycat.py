@@ -4,7 +4,7 @@ The parallel terraced scan (Hofstadter & Mitchell 1994; Mitchell 1993)
 collapsed to its load-bearing core: a stochastic, temperature-driven search
 over object correspondences, where SLIPPAGE — matching two objects despite an
 attribute mismatch — is licensed quantitatively by the learned
-:class:`~dowhat.concepts.ConceptNet` slips (the corpus probability that a
+:class:`~twinworld.concepts.ConceptNet` slips (the corpus probability that a
 true correspondence changes that attribute). With ``DEFAULT_CONCEPTS`` (all
 slips zero) the objective is exactly the SME backend's, so the two mappers
 differ only in search: deterministic greedy+repair versus annealed sampling.

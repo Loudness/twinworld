@@ -3,11 +3,11 @@ and the server routes are pure functions — no sockets, browser, or arckit."""
 
 import html
 
-import dowhat
+import twinworld
 from conftest import T
-from dowhat.domains.blocks import build_grid, candidate_moves, task_from_towers
-from dowhat.representation import as_grid, parse_grid
-from dowhat.viz import (
+from twinworld.domains.blocks import build_grid, candidate_moves, task_from_towers
+from twinworld.representation import as_grid, parse_grid
+from twinworld.viz import (
     PALETTE,
     VizApp,
     full_report,
@@ -53,7 +53,7 @@ def test_state_html_outlines():
 
 
 def test_report_solved_sections(recolor_task):
-    rep = dowhat.model(recolor_task)
+    rep = twinworld.model(recolor_task)
     doc = report_html(rep)
     assert doc.startswith("<!doctype")
     assert doc.count("<style") == 1
@@ -157,6 +157,16 @@ def test_route_index_lists_known_fitting_starters(recolor_task):
     assert "start with a task known to fit" in body
     no_starters = VizApp(tasks_fn=lambda: {"zzz": recolor_task})
     assert "start with" not in no_starters.route("/")[1]
+
+
+def test_scan_populates_status_without_rendering(recolor_task, unsolvable_task):
+    app = VizApp(tasks_fn=lambda: {"a": recolor_task, "b": unsolvable_task})
+    assert app.scan() == (1, 2)
+    assert app._pages == {}  # pages stay lazy; scan records status only
+    body = app.route("/")[1]
+    assert 'class="pass">fits<' in body
+    assert 'class="fail">no fit<' in body
+    assert "1/2 scanned task(s) fit" in body
 
 
 def test_route_missing_arckit_message():

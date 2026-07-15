@@ -8,7 +8,7 @@ in the input, left_of(m(a), m(b)) should hold in the output (parallel
 connectivity). The differences that survive the mapping ARE the observed
 transformation (Lovett & Forbus's recipe for Raven's matrices): per-object
 deltas are generalized across all train pairs into candidate
-:class:`~dowhat.mechanisms.ObjectRule` programs, which the ordinary engine
+:class:`~twinworld.mechanisms.ObjectRule` programs, which the ordinary engine
 then verifies. Analogy proposes; search disposes.
 
 MAC/FAC content vectors (predicate-occurrence counts, cosine similarity)

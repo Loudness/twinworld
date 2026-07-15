@@ -8,8 +8,8 @@ counterfactual, and the placebo refuter demonstrated on a spectator task.
 Run:  python examples/vertical_slice.py
 """
 
-import dowhat
-from dowhat import (
+import twinworld
+from twinworld import (
     Backtracking,
     IdentificationError,
     Interventional,
@@ -17,7 +17,7 @@ from dowhat import (
     Task,
     as_grid,
 )
-from dowhat.domains.arc import load_task
+from twinworld.domains.arc import load_task
 
 
 def line(row):
@@ -36,7 +36,7 @@ def rule(title):
 # ----------------------------------------------------------- 1. model(task)
 rule("1. model()  —  ARC task a79310a0")
 task = load_task("a79310a0")
-rep = dowhat.model(task, max_depth=2)
+rep = twinworld.model(task, max_depth=2)
 sol = rep.solution
 
 print(f"\ninduced program : {' ; '.join(map(str, sol.program))}")
@@ -55,9 +55,9 @@ show(sol.test_traces[0].outcome.grid)
 
 # --------------------------------------- 2+3. identify() and compute() a CF
 rule("2+3. identify() + compute()  —  interventional counterfactual")
-alt = dowhat.Recolor(8, 3)
+alt = twinworld.Recolor(8, 3)
 print(f"\nquery: what if step 0 had been [{alt}] instead of [{sol.program[0]}]?\n")
-cfs = dowhat.compute(dowhat.identify(rep, Interventional(step=0, alternative=alt)))
+cfs = twinworld.compute(twinworld.identify(rep, Interventional(step=0, alternative=alt)))
 for item in cfs.items:
     print(item.narrative)
 print("\ncounterfactual test output under the intervention:")
@@ -72,11 +72,11 @@ for step in range(len(sol.program)):
     tested = 0
     for prim in rep.primitives:
         try:
-            identified = dowhat.identify(rep, Interventional(step=step, alternative=prim))
+            identified = twinworld.identify(rep, Interventional(step=step, alternative=prim))
         except IdentificationError:
             continue  # the factual mechanism itself
         tested += 1
-        result = dowhat.compute(identified)
+        result = twinworld.compute(identified)
         if result.items[0].metrics.validity:
             valid_alts.append(prim)
     verdict = (
@@ -90,9 +90,9 @@ for step in range(len(sol.program)):
 # --------------------------------------------- backtracking counterfactual
 rule("backtracking  —  what if the input itself had differed?")
 factual_trace = sol.train_traces[0]
-shifted = dowhat.Translate(0, 1, colour=None).apply(factual_trace.states[0])
+shifted = twinworld.Translate(0, 1, colour=None).apply(factual_trace.states[0])
 if shifted is not None:
-    cfs = dowhat.compute(dowhat.identify(rep, Backtracking(shifted.grid)))
+    cfs = twinworld.compute(twinworld.identify(rep, Backtracking(shifted.grid)))
     print("\nedit: the input shape starts one column to the right")
     print(cfs.items[0].narrative)
     print("\nfactual outcome:            counterfactual outcome:")
@@ -103,9 +103,9 @@ if shifted is not None:
 # --------------------------------------------- contrastive: why not that?
 rule("contrastive  —  why this outcome and not that one?")
 factual_out = sol.test_traces[0].outcome
-azure = dowhat.Recolor(2, 8).apply(factual_out)  # foil: moved but still azure
+azure = twinworld.Recolor(2, 8).apply(factual_out)  # foil: moved but still azure
 print("\nfoil A: the shape moves down but KEEPS its azure colour (8)\n")
-cfs = dowhat.compute(dowhat.identify(rep, dowhat.Contrastive(azure.grid, on="test[0]")))
+cfs = twinworld.compute(twinworld.identify(rep, twinworld.Contrastive(azure.grid, on="test[0]")))
 for item in cfs.items[:3]:
     print(item.narrative)
 if len(cfs.items) > 3:
@@ -115,12 +115,12 @@ print(f"\nresponsibility profile (Chockler-Halpern): {cfs.responsibility}")
 extra = [list(r) for r in factual_out.grid]
 extra[0][0] = 2  # foil: same outcome plus one impossible extra pixel
 print("\nfoil B: the same outcome plus one extra red pixel at (0,0)\n")
-cfs_b = dowhat.compute(dowhat.identify(rep, dowhat.Contrastive(as_grid(extra), on="test[0]")))
+cfs_b = twinworld.compute(twinworld.identify(rep, twinworld.Contrastive(as_grid(extra), on="test[0]")))
 print(cfs_b.items[0].narrative)
 
 # ----------------------------------------- pertinent negatives (Experiment 4)
 rule("pertinent negatives  —  what ABSENCE is load-bearing?")
-pn = dowhat.compute(dowhat.identify(rep, dowhat.PertinentNegative(on="test[0]", max_cells=1)))
+pn = twinworld.compute(twinworld.identify(rep, twinworld.PertinentNegative(on="test[0]", max_cells=1)))
 print()
 for item in pn.items[:3]:
     print(item.narrative)
@@ -131,15 +131,15 @@ if len(pn.items) > 3:
 rule("re-segmentation  —  what if the objects had been carved differently?")
 print(f"\nchosen abstraction: [{rep.abstraction}]; "
       f"also solved under: {sorted(set(rep.solutions) - {rep.abstraction}) or '-'}")
-for alt_abstraction in dowhat.DEFAULT_ABSTRACTIONS:
+for alt_abstraction in twinworld.DEFAULT_ABSTRACTIONS:
     if alt_abstraction == rep.abstraction:
         continue
-    resegmented = dowhat.compute(dowhat.identify(rep, Representational(alt_abstraction)))
+    resegmented = twinworld.compute(twinworld.identify(rep, Representational(alt_abstraction)))
     print(resegmented.items[0].narrative)
 
 # ------------------------------------------------------------- 4. refute()
 rule("4. refute()  —  refutation battery")
-print(f"\n[ARC a79310a0]\n{dowhat.refute(rep)}")
+print(f"\n[ARC a79310a0]\n{twinworld.refute(rep)}")
 
 spectator_task = Task(
     train=(
@@ -149,6 +149,6 @@ spectator_task = Task(
     test=((as_grid([[0, 0, 3], [5, 0, 0], [0, 0, 0]]), as_grid([[0, 0, 4], [5, 0, 0], [0, 0, 0]])),),
     task_id="spectator-demo",
 )
-print(f"\n[spectator task — placebo has a target]\n{dowhat.refute(dowhat.model(spectator_task, max_depth=1))}")
+print(f"\n[spectator task — placebo has a target]\n{twinworld.refute(twinworld.model(spectator_task, max_depth=1))}")
 
 rule("done — the full pipeline ran: model -> identify -> compute -> refute")

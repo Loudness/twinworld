@@ -3,14 +3,14 @@
 import pytest
 from conftest import T
 
-import dowhat
-from dowhat import ByColour, Not, ObjectRule, RecolourTo, Task
-from dowhat.discriminate import probes, signature
-from dowhat.engine import ApplyCache
+import twinworld
+from twinworld import ByColour, Not, ObjectRule, RecolourTo, Task
+from twinworld.discriminate import probes, signature
+from twinworld.engine import ApplyCache
 
 pytest.importorskip("clingo")
 
-from dowhat.asp_solver import asp_solve  # noqa: E402
+from twinworld.asp_solver import asp_solve  # noqa: E402
 
 
 def test_asp_solves_recolour_and_engine_verifies(recolor_task):
@@ -25,8 +25,8 @@ def test_asp_model_strategy_agrees_with_analogy_when_determined(three_way_move_t
     # recolor_task is underdetermined (ByColour vs Not(ByColour(spectator))), so
     # ASP may legitimately land in another behavioural class there; the
     # three-way task has a single class, so the strategies MUST agree on it.
-    via_asp = dowhat.model(three_way_move_task, induction="asp")
-    via_analogy = dowhat.model(three_way_move_task)
+    via_asp = twinworld.model(three_way_move_task, induction="asp")
+    via_analogy = twinworld.model(three_way_move_task)
     assert via_asp.solution.strategy == "asp"
     probe_grids = probes(three_way_move_task, via_asp.abstraction)
     cache = ApplyCache()
@@ -39,8 +39,8 @@ def test_asp_solves_three_way_at_depth_three(three_way_move_task):
     result = asp_solve(three_way_move_task, max_depth=3)
     assert result.depth == 3
     assert result.verified >= 1
-    rep = dowhat.model(three_way_move_task, induction="asp")
-    expected = dowhat.as_grid(three_way_move_task.test[0][1])
+    rep = twinworld.model(three_way_move_task, induction="asp")
+    expected = twinworld.as_grid(three_way_move_task.test[0][1])
     assert rep.solution.test_traces[0].outcome.key == expected
 
 
@@ -54,7 +54,7 @@ def test_asp_searches_negation_space():
         task_id="synthetic-except-largest",
     )
     result = asp_solve(task, max_depth=1)
-    assert (ObjectRule(Not(dowhat.Largest()), RecolourTo(5)),) in result.programs
+    assert (ObjectRule(Not(twinworld.Largest()), RecolourTo(5)),) in result.programs
 
 
 def test_asp_declares_its_fragment():

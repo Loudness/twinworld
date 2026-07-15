@@ -2,7 +2,7 @@
 
 Pure stdlib; report rendering works on any :class:`Task` and needs no arckit.
 Save a single-file page with ``save_report(full_report(task), "report.html")``
-or open one directly with ``show(full_report(task))``. ``python -m dowhat.viz``
+or open one directly with ``show(full_report(task))``. ``python -m twinworld.viz``
 serves the ARC corpus at http://127.0.0.1:8008 (requires the ``arc`` extra);
 tasks are fitted on first click and cached.
 """
@@ -419,7 +419,7 @@ def report_html(
     """The full process page for a fitted representation."""
     task = rep.task
     sections = [
-        f"<h1>dowhat — task {_esc(task.task_id)}</h1>",
+        f"<h1>twinworld — task {_esc(task.task_id)}</h1>",
         _header(rep),
         _section("Demonstrations and held-out prediction", _demos(task, rep)),
         _section("Segmentation — plural abstractions", _segmentation(task, rep.abstraction)),
@@ -434,12 +434,12 @@ def report_html(
         )
     sections.append(_section("Confidence gate", _gate(rep)))
     sections.append(_section("Refutation battery", _refutation(rep)))
-    return _page(f"dowhat — {task.task_id}", "".join(sections))
+    return _page(f"twinworld — {task.task_id}", "".join(sections))
 
 
 def unsolved_report_html(task: Task, error: str) -> str:
     body = (
-        f"<h1>dowhat — task {_esc(task.task_id)}</h1>"
+        f"<h1>twinworld — task {_esc(task.task_id)}</h1>"
         f'<div class="banner"><strong>no fit:</strong> {_esc(error)}<br>'
         "This is the expected outcome for most ARC tasks: the transformation is "
         "outside the current rule vocabulary, and the solver says so rather than "
@@ -447,7 +447,7 @@ def unsolved_report_html(task: Task, error: str) -> str:
         + _section("Demonstrations", _demos(task, None))
         + _section("Segmentation — plural abstractions", _segmentation(task, None))
     )
-    return _page(f"dowhat — {task.task_id}", body)
+    return _page(f"twinworld — {task.task_id}", body)
 
 
 def full_report(
@@ -470,7 +470,7 @@ def save_report(html_doc: str, path: str | Path) -> Path:
 def show(html_doc: str, path: str | Path | None = None) -> Path:
     """Write the page (to ``path`` or a temp file) and open it in the browser."""
     if path is None:
-        fd, name = tempfile.mkstemp(suffix=".html", prefix="dowhat-")
+        fd, name = tempfile.mkstemp(suffix=".html", prefix="twinworld-")
         os.close(fd)
         path = name
     path = save_report(html_doc, path)
@@ -487,12 +487,19 @@ def show(html_doc: str, path: str | Path | None = None) -> Path:
 _KNOWN_FITTING = ("25ff71a9", "42a50994", "5582e5ca", "a79310a0", "b230c067", "e0fb7511")
 
 
+def _induction(task: Task) -> str:
+    """The corpus rule (same as the example reports): above 6 colours the blind
+    fallback explodes without ever fitting, so analogy-only keeps the server
+    responsive and the scan honest — both paths use this, so chips agree."""
+    return "auto" if len(task.colours()) <= 6 else "always"
+
+
 @dataclass
 class VizApp:
     """Routes for the local viewer; the pure ``route`` keeps it testable without sockets."""
 
     tasks_fn: Callable[[], dict[str, Task]]
-    title: str = "dowhat — ARC tasks"
+    title: str = "twinworld — ARC tasks"
     _tasks: dict[str, Task] | None = None
     _pages: dict[str, str] = field(default_factory=dict)
     _status: dict[str, str] = field(default_factory=dict)
@@ -501,6 +508,27 @@ class VizApp:
         if self._tasks is None:
             self._tasks = self.tasks_fn()
         return self._tasks
+
+    def scan(self, progress: Callable[[str], None] | None = None) -> tuple[int, int]:
+        """Pre-fit every task so the index shows true fit status immediately.
+
+        One model() attempt per task (minutes for the full corpus); the pages
+        themselves stay lazily rendered on first click."""
+        corpus = self._corpus()
+        fits = 0
+        for n, (tid, task) in enumerate(sorted(corpus.items()), start=1):
+            try:
+                model(task, induction=_induction(task))
+            except UnsolvedTaskError:
+                self._status[tid] = "no fit"
+            except Exception:  # a broken task must not kill startup
+                continue
+            else:
+                self._status[tid] = "fits"
+                fits += 1
+            if progress is not None and n % 100 == 0:
+                progress(f"  scanned {n}/{len(corpus)} — {fits} fit so far")
+        return fits, len(corpus)
 
     def route(self, path: str) -> tuple[int, str]:
         path = unquote(urlsplit(path).path)
@@ -514,7 +542,7 @@ class VizApp:
             return 500, _page(
                 "missing extra",
                 f"<h1>arckit is not installed</h1><p>{_esc(err)} — install the ARC "
-                "extra: <code>pip install 'dowhat[arc]'</code></p>",
+                "extra: <code>pip install 'twinworld[arc]'</code></p>",
             )
         except Exception as err:  # a bad task must not kill the server
             return 500, _page("error", f"<h1>error</h1><p>{_esc(err)}</p>")
@@ -532,6 +560,12 @@ class VizApp:
                 f'<a href="/task/{quote(tid)}">{_esc(tid)}</a>' for tid in starters
             )
             intro += f"<p>start with a task known to fit: {links}</p>"
+        if self._status:
+            fits = sum(1 for s in self._status.values() if s == "fits")
+            intro += (
+                f"<p>{fits}/{len(self._status)} scanned task(s) fit the current "
+                f"vocabulary.</p>"
+            )
         items = "".join(
             f'<li><a href="/task/{quote(tid)}">{_esc(tid)}</a>{self._chip(tid)}</li>'
             for tid in ids
@@ -552,7 +586,7 @@ class VizApp:
             return 404, _page("not found", f"<h1>404</h1><p>unknown task {_esc(tid)}</p>")
         if tid not in self._pages:
             try:
-                rep = model(corpus[tid])
+                rep = model(corpus[tid], induction=_induction(corpus[tid]))
             except UnsolvedTaskError as err:
                 self._pages[tid] = unsolved_report_html(corpus[tid], str(err))
                 self._status[tid] = "no fit"
@@ -568,7 +602,7 @@ def _arc_app(dataset: str = "train") -> VizApp:
 
         return {t.task_id: t for t in iter_tasks(dataset)}
 
-    return VizApp(tasks_fn=tasks_fn, title=f"dowhat — ARC {dataset} tasks")
+    return VizApp(tasks_fn=tasks_fn, title=f"twinworld — ARC {dataset} tasks")
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -584,12 +618,19 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(payload)
 
 
-def serve(port: int = 8008, dataset: str = "train", open_browser: bool = False) -> None:
+def serve(
+    port: int = 8008, dataset: str = "train", open_browser: bool = False, scan: bool = False
+) -> None:
     """Single-threaded local viewer (a slow first fit blocks other requests)."""
-    handler = type("Handler", (_Handler,), {"app": _arc_app(dataset)})
+    app = _arc_app(dataset)
+    if scan:
+        print(f"twinworld viz: pre-scanning the {dataset} corpus (this takes a few minutes)")
+        fits, total = app.scan(progress=print)
+        print(f"twinworld viz: scan done — {fits}/{total} tasks fit")
+    handler = type("Handler", (_Handler,), {"app": app})
     server = HTTPServer(("127.0.0.1", port), handler)
     url = f"http://127.0.0.1:{port}/"
-    print(f"dowhat viz: serving ARC {dataset} tasks at {url} (Ctrl-C to stop)")
+    print(f"twinworld viz: serving ARC {dataset} tasks at {url} (Ctrl-C to stop)")
     if open_browser:
         webbrowser.open(url)
     try:
@@ -602,13 +643,19 @@ def serve(port: int = 8008, dataset: str = "train", open_browser: bool = False) 
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Serve dowhat process pages for the ARC corpus."
+        description="Serve twinworld process pages for the ARC corpus."
     )
     parser.add_argument("--port", type=int, default=8008)
     parser.add_argument("--dataset", choices=("train", "eval"), default="train")
     parser.add_argument("--open", action="store_true", help="open the index in a browser")
+    parser.add_argument(
+        "--scan",
+        action="store_true",
+        help="pre-fit every task at startup so the index shows fit status "
+        "immediately (adds a few minutes)",
+    )
     args = parser.parse_args(argv)
-    serve(port=args.port, dataset=args.dataset, open_browser=args.open)
+    serve(port=args.port, dataset=args.dataset, open_browser=args.open, scan=args.scan)
 
 
 if __name__ == "__main__":

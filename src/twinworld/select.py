@@ -2,7 +2,7 @@
 
 Failure class 3 (Bober-Irizar & Banerjee, arXiv:2402.03507) is the case where
 several programs fit the demonstrations and disagree on the test input.
-:func:`dowhat.predict` answers it with calibrated ABSTENTION; this module is
+:func:`twinworld.predict` answers it with calibrated ABSTENTION; this module is
 the experimental instrument that asks whether one can do better than abstain:
 passive POLICIES choose a behavioural class without new information, and
 :func:`resolve_with_probe` spends oracle queries on the diagnosing probe —
@@ -99,7 +99,7 @@ def select(
     policy: str = "probe_stability",
     rng: random.Random | None = None,
 ) -> tuple[tuple[Grid | None, ...], ConfidenceReport]:
-    """Like :func:`dowhat.predict`, but on LOW confidence a policy picks a
+    """Like :func:`twinworld.predict`, but on LOW confidence a policy picks a
     behavioural class instead of abstaining. The gate's calibrated abstention
     stays the library default; this is the experiment."""
     report = assess(rep)

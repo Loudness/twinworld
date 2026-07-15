@@ -14,10 +14,10 @@ import sys
 import time
 from itertools import islice
 
-import dowhat
-from dowhat import DEFAULT_CONCEPTS, UnsolvedTaskError, as_grid, learn_concepts
-from dowhat.concepts import save_concepts
-from dowhat.domains.arc import iter_tasks
+import twinworld
+from twinworld import DEFAULT_CONCEPTS, UnsolvedTaskError, as_grid, learn_concepts
+from twinworld.concepts import save_concepts
+from twinworld.domains.arc import iter_tasks
 
 N_TRAIN = int(sys.argv[1]) if len(sys.argv) > 1 else 1000
 N_EVAL = int(sys.argv[2]) if len(sys.argv) > 2 else 120
@@ -46,7 +46,7 @@ def sweep(tasks, concepts, mapper):
         induction = "auto" if len(task.colours()) <= 6 else "always"
         t0 = time.perf_counter()
         try:
-            rep = dowhat.model(task, induction=induction, concepts=concepts, mapper=mapper)
+            rep = twinworld.model(task, induction=induction, concepts=concepts, mapper=mapper)
         except UnsolvedTaskError:
             continue
         walls.append((time.perf_counter() - t0) * 1000)
@@ -127,7 +127,7 @@ for task in known_in_run:
     induction = "auto" if len(task.colours()) <= 6 else "always"
     line = f"  {task.task_id}: "
     try:
-        rep = dowhat.model(task, induction=induction, concepts=net, mapper="sme")
+        rep = twinworld.model(task, induction=induction, concepts=net, mapper="sme")
         line += "solved" if transfers(task, rep.solution) else "train-fit only"
     except UnsolvedTaskError:
         line += "NO FIT (regression vs hand-coded)"

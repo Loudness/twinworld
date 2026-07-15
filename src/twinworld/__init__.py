@@ -1,4 +1,4 @@
-"""dowhat — counterfactual reasoning over symbolic state-transition traces."""
+"""twinworld — counterfactual reasoning over symbolic state-transition traces."""
 
 from .api import (
     DEFAULT_ABSTRACTIONS,
@@ -43,7 +43,7 @@ from .refute import RefutationReport
 from .select import select
 from .representation import Grid, Obj, StateGraph, as_grid, match_objects, parse_grid
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 __all__ = [
     "All",

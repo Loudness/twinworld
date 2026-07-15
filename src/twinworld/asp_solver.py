@@ -15,7 +15,7 @@ every answer set is decoded and VERIFIED through the exact engine before
 being trusted: ASP proposes, the engine disposes. Mismatches are counted,
 never silently accepted.
 
-Requires the optional dependency: ``pip install dowhat[asp]``.
+Requires the optional dependency: ``pip install twinworld[asp]``.
 """
 
 from __future__ import annotations
@@ -195,7 +195,7 @@ def asp_solve(
         import clingo
     except ImportError:
         raise ImportError(
-            "the ASP solver needs clingo — pip install 'dowhat[asp]'"
+            "the ASP solver needs clingo — pip install 'twinworld[asp]'"
         ) from None
 
     inputs, selectors, transforms = _candidates(task, abstraction)

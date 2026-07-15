@@ -16,9 +16,9 @@ import statistics
 import sys
 import time
 
-from dowhat.benchmark import _place_objects, random_delete_instance
-from dowhat.engine import abduce_inputs
-from dowhat.mechanisms import (
+from twinworld.benchmark import _place_objects, random_delete_instance
+from twinworld.engine import abduce_inputs
+from twinworld.mechanisms import (
     DEFAULT_PREIMAGE_BUDGET,
     ByColour,
     Delete,
@@ -26,7 +26,7 @@ from dowhat.mechanisms import (
     PreimageBudget,
     RecolourTo,
 )
-from dowhat.representation import parse_grid
+from twinworld.representation import parse_grid
 
 SEEDS = int(sys.argv[1]) if len(sys.argv) > 1 else 5
 LIMITS = (16, 64, 256)

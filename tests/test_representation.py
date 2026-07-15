@@ -1,7 +1,7 @@
 from conftest import T
 
-from dowhat import match_objects, parse_grid
-from dowhat.representation import infer_background
+from twinworld import match_objects, parse_grid
+from twinworld.representation import infer_background
 
 
 def test_round_trip_reconstructs_grid():

@@ -18,13 +18,13 @@ import random
 import sys
 import time
 
-import dowhat
-from dowhat import UnsolvedTaskError, as_grid, induce_rules
-from dowhat.benchmark import random_ambiguous_task, random_grid
-from dowhat.discriminate import diagnose
-from dowhat.engine import ApplyCache, solve_all
-from dowhat.representation import parse_grid
-from dowhat.select import POLICIES, resolve_with_probe
+import twinworld
+from twinworld import UnsolvedTaskError, as_grid, induce_rules
+from twinworld.benchmark import random_ambiguous_task, random_grid
+from twinworld.discriminate import diagnose
+from twinworld.engine import ApplyCache, solve_all
+from twinworld.representation import parse_grid
+from twinworld.select import POLICIES, resolve_with_probe
 
 N = next((int(a) for a in sys.argv[1:] if a.isdigit()), 30)
 RUN_ARC = "--no-arc" not in sys.argv
@@ -62,8 +62,8 @@ def passive_block(insts, label):
     low = 0
     gate_answered = gate_correct = 0
     for task, latent in insts:
-        rep = dowhat.model(task)
-        report = dowhat.assess(rep)
+        rep = twinworld.model(task)
+        report = twinworld.assess(rep)
         if report.confidence == "high":
             gate_answered += 1
             gate_correct += correct(report.predictions[0], task)
@@ -104,8 +104,8 @@ rule("4. benign block: ambiguity without divergence")
 benign = instances(False, 0.5, N, "benign")
 answered = right = 0
 for task, latent in benign:
-    rep = dowhat.model(task)
-    prediction, report = dowhat.predict(rep)
+    rep = twinworld.model(task)
+    prediction, report = twinworld.predict(rep)
     if prediction is not None:
         answered += 1
         right += correct(prediction, task)
@@ -138,7 +138,7 @@ for task, latent in treach:
             continue
         extra.append((as_grid(grid), trace.outcome.key))
     for budget in (1, 2):
-        extended = dowhat.Task(
+        extended = twinworld.Task(
             train=task.train + tuple(extra[:budget]), test=task.test,
             task_id=task.task_id,
         )
@@ -161,17 +161,17 @@ print(f"  random demos that fail to break the collision after 1 query: "
 
 if RUN_ARC:
     rule("6. the real-ARC specimens (train corpus, gate == LOW)")
-    from dowhat.domains.arc import iter_tasks
+    from twinworld.domains.arc import iter_tasks
 
     t0 = time.perf_counter()
     found = 0
     for task in iter_tasks("train"):
         induction = "auto" if len(task.colours()) <= 6 else "always"
         try:
-            rep = dowhat.model(task, induction=induction)
+            rep = twinworld.model(task, induction=induction)
         except UnsolvedTaskError:
             continue
-        report = dowhat.assess(rep)
+        report = twinworld.assess(rep)
         if report.confidence == "high":
             continue
         found += 1

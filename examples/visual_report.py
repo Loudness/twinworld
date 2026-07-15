@@ -1,20 +1,20 @@
-"""Render a task's full dowhat process page to a self-contained HTML file.
+"""Render a task's full twinworld process page to a self-contained HTML file.
 
 Run:  python examples/visual_report.py                        # ARC a79310a0
       python examples/visual_report.py 007bbfb7 -o out.html --open
       python examples/visual_report.py --blocks --open        # no arckit needed
 
-(For browsing the whole corpus interactively: python -m dowhat.viz)
+(For browsing the whole corpus interactively: python -m twinworld.viz)
 """
 
 import argparse
 import sys
 
-from dowhat.viz import full_report, save_report, show
+from twinworld.viz import full_report, save_report, show
 
 
 def blocks_demo():
-    from dowhat.domains.blocks import build_grid, candidate_moves, task_from_towers
+    from twinworld.domains.blocks import build_grid, candidate_moves, task_from_towers
 
     task = task_from_towers(
         train=[
@@ -34,7 +34,7 @@ def blocks_demo():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Write a dowhat process page as HTML.")
+    parser = argparse.ArgumentParser(description="Write a twinworld process page as HTML.")
     parser.add_argument("task_id", nargs="?", default="a79310a0")
     parser.add_argument("-o", "--out", default=None)
     parser.add_argument("--open", action="store_true", dest="open_browser")
@@ -46,11 +46,11 @@ def main():
         default_out = "report_blocks.html"
     else:
         try:
-            from dowhat.domains.arc import load_task
+            from twinworld.domains.arc import load_task
 
             task = load_task(args.task_id)
         except ModuleNotFoundError:
-            sys.exit("arckit is not installed — pip install 'dowhat[arc]' (or use --blocks)")
+            sys.exit("arckit is not installed — pip install 'twinworld[arc]' (or use --blocks)")
         except KeyError as err:
             sys.exit(str(err))
         kwargs = {}

@@ -14,9 +14,9 @@ Usage:
 
 import sys
 
-from dowhat import DEFAULT_ABSTRACTIONS, UnsolvedTaskError, match_objects, parse_grid
-from dowhat.api import model
-from dowhat.domains.arc import iter_tasks
+from twinworld import DEFAULT_ABSTRACTIONS, UnsolvedTaskError, match_objects, parse_grid
+from twinworld.api import model
+from twinworld.domains.arc import iter_tasks
 
 MAX_OBJECTS = 80  # beyond this the segmentation is too fragmented to be meaningful
 

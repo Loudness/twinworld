@@ -4,15 +4,15 @@ live smoke test runs only when the local endpoint is reachable."""
 import pytest
 from conftest import T
 
-from dowhat import Task
-from dowhat.baselines.llm import (
+from twinworld import Task
+from twinworld.baselines.llm import (
     build_prompt,
     grid_text,
     llm_predict,
     parse_grid_text,
     reachable,
 )
-from dowhat.domains.causalarc import CfDemo
+from twinworld.domains.causalarc import CfDemo
 
 
 def test_grid_text_round_trip():

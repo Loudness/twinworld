@@ -21,7 +21,14 @@ if TYPE_CHECKING:
 
 Grid = tuple[tuple[int, ...], ...]
 Cell = tuple[int, int]
-Pixel = tuple[int, int, int]  # (row, col, colour)
+Pixel = tuple[int, int, int]
+
+# The domain contract: colour ids are 0..MAX_COLOURS-1 (the ARC convention).
+# Core preimage/refuter enumerations range over this palette, and
+# infer_background breaks frequency ties in favour of 0 — domain plugins must
+# stay within these ids (blocks world does; see README "Using twinworld in
+# your own domain").
+MAX_COLOURS = 10  # (row, col, colour)
 
 
 def as_grid(rows: Iterable[Iterable[int]]) -> Grid:

@@ -16,9 +16,9 @@ import statistics
 import sys
 import time
 
-from dowhat import UnsolvedTaskError, as_grid
-from dowhat.api import assess, model
-from dowhat.domains.arc import iter_tasks
+from twinworld import UnsolvedTaskError, as_grid
+from twinworld.api import assess, model
+from twinworld.domains.arc import iter_tasks
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 limit = int(args[0]) if args else None

@@ -3,8 +3,8 @@
 import pytest
 from conftest import T
 
-import dowhat
-from dowhat import (
+import twinworld
+from twinworld import (
     ByColour,
     Delete,
     ObjectRule,
@@ -17,7 +17,7 @@ from dowhat import (
     retrieve,
     structure_map,
 )
-from dowhat.analogy import pair_deltas
+from twinworld.analogy import pair_deltas
 
 
 # ------------------------------------------------------------ structure map
@@ -57,34 +57,34 @@ def test_induce_rules_proposes_selective_recolour(recolor_task):
     assert ObjectRule(ByColour(3), RecolourTo(4)) in rules
     # the spectator is unchanged, so no all-objects recolour is proposed
     assert all(
-        not (isinstance(r.selector, dowhat.All) and isinstance(r.transform, RecolourTo))
+        not (isinstance(r.selector, twinworld.All) and isinstance(r.transform, RecolourTo))
         for r in rules
     )
 
 
 def test_analogy_solves_three_way_move(three_way_move_task):
-    rep = dowhat.model(three_way_move_task)
+    rep = twinworld.model(three_way_move_task)
     sol = rep.solution
     assert sol.strategy == "analogy"
     assert len(sol.program) == 3
     assert sol.programs_tried < 400  # 3 candidates, depth 3 — nowhere near blind scale
-    assert sol.test_traces[0].outcome.key == dowhat.as_grid(three_way_move_task.test[0][1])
+    assert sol.test_traces[0].outcome.key == twinworld.as_grid(three_way_move_task.test[0][1])
 
 
 def test_analogy_solves_same_colour_denoise(denoise_task):
-    rep = dowhat.model(denoise_task)
+    rep = twinworld.model(denoise_task)
     sol = rep.solution
     assert sol.strategy == "analogy"
     assert sol.program == (ObjectRule(Smallest(), Delete()),)
-    assert sol.test_traces[0].outcome.key == dowhat.as_grid(denoise_task.test[0][1])
+    assert sol.test_traces[0].outcome.key == twinworld.as_grid(denoise_task.test[0][1])
 
 
 def test_blind_enumeration_cannot_solve_the_analogy_fixtures(
     three_way_move_task, denoise_task
 ):
     for task in (three_way_move_task, denoise_task):
-        with pytest.raises(dowhat.UnsolvedTaskError):
-            dowhat.model(task, induction="never")
+        with pytest.raises(twinworld.UnsolvedTaskError):
+            twinworld.model(task, induction="never")
 
 
 # --------------------------------------------------------------- ObjectRule

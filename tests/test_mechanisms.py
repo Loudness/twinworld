@@ -1,6 +1,6 @@
 from conftest import T
 
-from dowhat import Recolor, Translate, parse_grid
+from twinworld import Recolor, Translate, parse_grid
 
 
 def test_recolor_applies_to_all_objects_of_colour():

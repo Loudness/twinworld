@@ -2,8 +2,8 @@
 
 import pytest
 
-from dowhat import as_grid
-from dowhat.domains.causalarc import load_causalarc, parse_causalarc
+from twinworld import as_grid
+from twinworld.domains.causalarc import load_causalarc, parse_causalarc
 
 
 def test_parse_causalarc_is_pure_and_network_free():

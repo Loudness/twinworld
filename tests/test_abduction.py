@@ -1,15 +1,15 @@
 """Phase 9: abduction through deletion — the documented wall becomes a
 bounded hypothesis search, verified exactly by re-application."""
 
-import dowhat
+import twinworld
 from conftest import T
 
-from dowhat import ByColour, Delete, ObjectRule, RecolourTo, Smallest, parse_grid
-from dowhat.engine import abduce_inputs
+from twinworld import ByColour, Delete, ObjectRule, RecolourTo, Smallest, parse_grid
+from twinworld.engine import abduce_inputs
 
 
 def test_delete_preimage_recovers_denoise_input(denoise_task):
-    rep = dowhat.model(denoise_task)
+    rep = twinworld.model(denoise_task)
     (rule,) = rep.solution.program
     trace = rep.solution.train_traces[0]
     preimages = list(rule.preimage(trace.outcome))
@@ -58,7 +58,7 @@ def test_backward_chain_through_recolour_and_delete():
 
 
 def test_abduce_inputs_is_bounded_and_deterministic(denoise_task):
-    rep = dowhat.model(denoise_task)
+    rep = twinworld.model(denoise_task)
     outcome = rep.solution.train_traces[0].outcome
     inputs = abduce_inputs(rep.solution.program, outcome, limit=5)
     assert 0 < len(inputs) <= 5

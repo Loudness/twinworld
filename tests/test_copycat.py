@@ -5,9 +5,9 @@ import random
 
 from conftest import T
 
-import dowhat
-from dowhat import induce_rules, parse_grid, structure_map
-from dowhat.copycat import copycat_map
+import twinworld
+from twinworld import induce_rules, parse_grid, structure_map
+from twinworld.copycat import copycat_map
 
 
 def _pairs_as_locations(pairs):
@@ -40,8 +40,8 @@ def test_mapper_both_is_candidate_superset(recolor_task, three_way_move_task):
 
 
 def test_model_with_copycat_mapper_solves_deterministically(three_way_move_task):
-    rep1 = dowhat.model(three_way_move_task, mapper="copycat")
-    rep2 = dowhat.model(three_way_move_task, mapper="copycat")
+    rep1 = twinworld.model(three_way_move_task, mapper="copycat")
+    rep2 = twinworld.model(three_way_move_task, mapper="copycat")
     assert rep1.solution.program == rep2.solution.program
     assert rep1.solution.programs_tried == rep2.solution.programs_tried
     assert rep1.mapper == "copycat"

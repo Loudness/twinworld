@@ -9,7 +9,7 @@ semantics is the "extra path validation" the thesis proposal asks negation to
 provide. A full ASP solver over the transforms is deliberately out of scope
 (flagged as its own milestone).
 
-Requires the optional dependency: ``pip install dowhat[asp]``.
+Requires the optional dependency: ``pip install twinworld[asp]``.
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ def crosscheck_selectors(solution: Solution) -> tuple[bool | None, str]:
     try:
         import clingo  # noqa: F401
     except ImportError:
-        return None, "clingo not installed — pip install 'dowhat[asp]'"
+        return None, "clingo not installed — pip install 'twinworld[asp]'"
     rules = [m for m in solution.program if isinstance(m, ObjectRule)]
     if not rules:
         return None, "the induced program contains no object rules to cross-check"
