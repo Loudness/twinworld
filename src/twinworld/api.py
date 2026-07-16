@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Hashable, Sequence
 
 if TYPE_CHECKING:
     from .discriminate import DiscriminationReport
@@ -79,6 +79,10 @@ def _fit_abstraction(
     stays cheap — the Chollet-efficiency argument in code.
     """
     if induction == "asp":
+        if task.representation != "grid":
+            raise UnsolvedTaskError(
+                f"the ASP induction backend is grid-only; task uses {task.representation!r}"
+            )
         from .asp_solver import asp_solve, solution_from_asp
 
         result = asp_solve(task, abstraction=abstraction, max_depth=analogy_depth)
@@ -216,7 +220,7 @@ class PertinentNegative:
     # colours=None probes the task palette plus one fresh colour; pass an
     # explicit tuple to restrict (e.g. only a fresh colour, when palette
     # duplicates would trip uniqueness preconditions everywhere).
-    colours: tuple[int, ...] | None = None
+    colours: tuple[Hashable, ...] | None = None  # backends read these as generic values
 
 
 Query = Interventional | Backtracking | Representational | Contrastive | PertinentNegative
@@ -299,6 +303,11 @@ def identify(rep: CausalRepresentation, query: Query) -> IdentifiedQuery:
         _resolve_trace(rep, query.on)
         if query.max_cells < 1:
             raise IdentificationError("max_cells must be at least 1")
+        if not hasattr(backend, "addition_catalogue"):
+            raise IdentificationError(
+                f"pertinent negatives need an addition catalogue; the "
+                f"{backend.name} representation does not define one"
+            )
         return IdentifiedQuery(rep, query, "pertinent_negative")
     raise IdentificationError(f"unknown query type {type(query).__name__}")
 
@@ -318,9 +327,22 @@ class CounterfactualSet:
     identified: IdentifiedQuery
     items: tuple[CounterfactualItem, ...]
     responsibility: dict[int, float] | None = None  # per-step, contrastive mode only
+    diversity: float | None = None  # mean pairwise outcome distance, ≥2 applicable items
 
     def __str__(self) -> str:
         return "\n".join(item.narrative for item in self.items)
+
+    def alternatives(self):
+        """This set as a uniform :class:`~twinworld.alternatives.Alternatives`
+        container — the same ranking/Pareto machinery that serves program
+        classes and preimage candidates."""
+        from .alternatives import Alternatives
+
+        kind = {"contrastive": "edit_sets", "pertinent_negative": "pn_witnesses"}.get(
+            self.identified.mode, self.identified.mode
+        )
+        scores = tuple(item.metrics.as_dict() for item in self.items)
+        return Alternatives(kind, self.items, scores, context=self)
 
 
 def compute(identified: IdentifiedQuery, backend: str = "cf.twinworld") -> CounterfactualSet:
@@ -399,15 +421,25 @@ def _pertinent(identified: IdentifiedQuery) -> CounterfactualSet:
                     f"minimal within the catalogue, certified).",
                 )
             )
-        return CounterfactualSet(identified, tuple(items))
+        return CounterfactualSet(
+            identified, tuple(items), diversity=_diversity_of([cf for _, cf, _ in witnesses])
+        )
     cf = Counterfactual("pertinent_negative", trace, None, 0, trace.mechanisms)
     m = _metrics.evaluate(rep.solution, cf)
     narrative = (
         f"{query.on}: no added separated object of up to {query.max_cells} cell(s) in "
-        f"{len(values)} colour(s) changes any original object's outcome — within this "
+        f"{len(values)} value(s) changes any original object's outcome — within this "
         f"catalogue, the outcome depends on no absence (bounded certificate)."
     )
     return CounterfactualSet(identified, (CounterfactualItem(cf, m, narrative),))
+
+
+def _diversity_of(cfs: list[Counterfactual]) -> float | None:
+    """Mean pairwise outcome distance of a returned set; None below two
+    applicable members (a singleton has no diversity to report)."""
+    if sum(1 for cf in cfs if cf.applicable) < 2:
+        return None
+    return _metrics.diversity(cfs)
 
 
 def _absence_matters(trace: Trace, cf_run: Counterfactual) -> tuple[bool, str]:
@@ -459,7 +491,7 @@ def _contrast(identified: IdentifiedQuery) -> CounterfactualSet:
             )
         )
     return CounterfactualSet(
-        identified, tuple(items), _metrics.responsibility_profile(cfs)
+        identified, tuple(items), _metrics.responsibility_profile(cfs), _diversity_of(cfs)
     )
 
 

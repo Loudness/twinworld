@@ -81,6 +81,9 @@ class MetricVector:
     proximity: float
     divergence_step: int
     applicable: bool
+    # certificates, not manifold scores (None = the backend/solution cannot say):
+    plausible: bool | None = None  # backend constraint-consistency of the CF outcome
+    reachable: bool | None = None  # CF outcome was visited during the original search
 
     def as_dict(self) -> dict:
         return {
@@ -89,6 +92,8 @@ class MetricVector:
             "proximity": self.proximity,
             "divergence_step": self.divergence_step,
             "applicable": self.applicable,
+            "plausible": self.plausible,
+            "reachable": self.reachable,
         }
 
 
@@ -141,12 +146,67 @@ def evaluate(solution: Solution, cf: Counterfactual) -> MetricVector:
         valid = cf.applicable
     else:
         valid = validity(solution, cf)
+    plausible = None
+    reachable = None
+    if cf.applicable:
+        outcome = cf.counterfactual.outcome
+        plausible_fn = getattr(representation_of(solution.task), "plausible", None)
+        if plausible_fn is not None:
+            plausible = plausible_fn(outcome)
+        if solution.searched is not None:
+            reachable = outcome.key in solution.searched
     return MetricVector(
         validity=valid,
         sparsity=sparsity(cf.factual.mechanisms, cf.program),
         proximity=prox,
         divergence_step=cf.divergence_step,
         applicable=cf.applicable,
+        plausible=plausible,
+        reachable=reachable,
+    )
+
+
+def _ok(m: MetricVector) -> bool:
+    return m.applicable and m.validity is not False
+
+
+def dominates(a: MetricVector, b: MetricVector) -> bool:
+    """Exact Pareto dominance over the counterfactual desiderata.
+
+    Applicability + non-failed validity is a hard filter; among survivors,
+    lower sparsity, lower proximity, and higher plausibility dominate. A None
+    plausibility is neutral — never strictly better or worse — so backends
+    without the capability neither win nor lose on it.
+    """
+    if _ok(a) != _ok(b):
+        return _ok(a)
+    if not _ok(a):
+        return False
+    plaus_ge, plaus_gt = True, False
+    if a.plausible is not None and b.plausible is not None:
+        plaus_ge = a.plausible >= b.plausible
+        plaus_gt = a.plausible > b.plausible
+    at_least = a.sparsity <= b.sparsity and a.proximity <= b.proximity and plaus_ge
+    strictly = a.sparsity < b.sparsity or a.proximity < b.proximity or plaus_gt
+    return at_least and strictly
+
+
+def pareto_front(items: list) -> tuple:
+    """The exact Pareto front of a set of alternatives, in original order.
+
+    Items may be MetricVectors or anything carrying a ``.metrics`` vector
+    (e.g. CounterfactualItem). Because twinworld's alternative sets are
+    exhaustively enumerated within declared bounds, this is the TRUE front,
+    not an approximation.
+    """
+
+    def vec(x) -> MetricVector:
+        return getattr(x, "metrics", x)
+
+    return tuple(
+        x
+        for i, x in enumerate(items)
+        if not any(dominates(vec(y), vec(x)) for j, y in enumerate(items) if j != i)
     )
 
 

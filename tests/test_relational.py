@@ -73,6 +73,45 @@ def test_unbounded_height_move_succeeds_natively():
     assert moved.towers == ((1, 2, 3, 5, 4), (), ())
 
 
+def test_asp_induction_gated_on_non_grid():
+    import pytest
+
+    import twinworld
+    from twinworld.domains.blocks import task_from_towers
+
+    task = task_from_towers(
+        train=[([[1, 2], [], []], [[], [2], [1]])],
+        test=[([[1, 2], [], []], [[], [2], [1]])],
+    )
+    with pytest.raises(twinworld.UnsolvedTaskError):  # graceful, not ImportError/KeyError
+        twinworld.model(task, induction="asp")
+
+
+def test_relational_placebo_passes_end_to_end():
+    import twinworld
+    from twinworld.domains.blocks import candidate_moves, task_from_towers
+
+    task = task_from_towers(
+        train=[
+            ([[1, 2], [], []], [[], [2], [1]]),
+            ([[1, 2], [3], []], [[], [3, 2], [1]]),
+        ],
+        test=[([[1, 2], [5], []], [[], [5, 2], [1]])],
+    )
+    rep = twinworld.model(task, primitives=candidate_moves(task), induction="never", max_depth=2)
+    report = twinworld.refute(rep)
+    placebo = next(row for row in report.rows if row.name == "placebo_intervention")
+    assert placebo.passed is True  # block 3 renamed; the plan passes it through
+    assert "block" in placebo.detail
+
+
+def test_relational_plausible_rejects_duplicate_ids():
+    assert REL.plausible(state_from_towers([[1, 2], [3], []])) is True
+    assert REL.plausible(state_from_towers([[1, 2], [1], []])) is False  # duplicate block id
+    bounded = REL.parse(((1, 2, 3), ()), context={"height": 2})
+    assert REL.plausible(bounded) is False  # exceeds the declared bound
+
+
 def test_render_raw_contains_palette_columns():
     from twinworld.viz import PALETTE
 

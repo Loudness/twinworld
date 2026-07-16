@@ -17,6 +17,7 @@ import math
 import random
 
 from .analogy import MAX_REPAIR_OBJECTS, _greedy_mapping, _map_score, relations
+from .backend import representation_of
 from .concepts import DEFAULT_CONCEPTS, ConceptNet
 from .representation import Obj, StateGraph
 
@@ -34,6 +35,7 @@ def copycat_map(
     """Stochastic correspondence search; same contract as ``structure_map``."""
     net = concepts if concepts is not None else DEFAULT_CONCEPTS
     rng = rng if rng is not None else random.Random(0)
+    overlap = representation_of(a).overlap
     a_objs = {o.oid: o for o in a.objects}
     b_objs = {o.oid: o for o in b.objects}
     a_ids = sorted(a_objs)
@@ -41,9 +43,9 @@ def copycat_map(
     rels_a, rels_b = relations(a), relations(b)
 
     def score(m: dict[int, int]) -> float:
-        return _map_score(m, a_objs, b_objs, rels_a, rels_b, net, slip=True)
+        return _map_score(m, a_objs, b_objs, rels_a, rels_b, net, slip=True, overlap=overlap)
 
-    current = _greedy_mapping(a, b, concepts)
+    current = _greedy_mapping(a, b, concepts, overlap)
     cur_score = score(current)
     best, best_score = dict(current), cur_score
 

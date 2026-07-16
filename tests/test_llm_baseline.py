@@ -57,3 +57,13 @@ def test_llm_predict_live_smoke():
     )
     guess = llm_predict(identity, timeout=240)
     assert guess is not None  # a grid came back and parsed (correctness not asserted)
+
+
+def test_build_prompt_rejects_non_grid():
+    import pytest
+
+    from twinworld.backends.sequence import letters_task
+
+    task = letters_task(train=[("abc", "abd")], test=[("ijk", "ijl")])
+    with pytest.raises(ValueError, match="grid-only"):
+        build_prompt(task)

@@ -105,6 +105,10 @@ class Solution:
     cache: ApplyCache
     programs_tried: int = 0
     strategy: str = "enumerate"  # "enumerate" (blind) | "analogy" (induced rules)
+    # state keys visited DURING SEARCH — snapshot at solve() return. The live
+    # cache.dag keeps growing as counterfactuals are computed through it, so
+    # reachability certificates must use this frozen set, never the live DAG.
+    searched: frozenset | None = None
 
     @property
     def dag(self) -> nx.DiGraph:
@@ -149,7 +153,10 @@ def solve(
                     for i, _ in task.test
                     if (t := cache.run(rep.parse(i, abstraction), program)) is not None
                 )
-                return Solution(task, program, tuple(traces), test_traces, cache, tried, strategy)
+                return Solution(
+                    task, program, tuple(traces), test_traces, cache, tried, strategy,
+                    searched=frozenset(cache.dag.nodes),
+                )
     raise UnsolvedTaskError(
         f"no program of depth <= {max_depth} over {len(primitives)} primitives "
         f"solves task {task.task_id} ({tried} programs tried)"

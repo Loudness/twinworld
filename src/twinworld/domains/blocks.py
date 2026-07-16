@@ -165,6 +165,9 @@ class MoveBlock:
             if pre is not None and self.apply(pre) == s:
                 yield pre
 
+    def touched(self, attr: str) -> frozenset | None:
+        return frozenset({self.block}) if attr == "block" else None
+
     def __str__(self) -> str:
         return f"move block {self.block} to column {self.to_column}"
 

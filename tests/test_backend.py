@@ -212,6 +212,13 @@ def test_touched_matches_the_historical_reference_table(mechanism, expected):
     assert mechanism.touched("shape") == (frozenset() if isinstance(mechanism, Identity) else None)
 
 
+def test_moveblock_touched_block_attr():
+    from twinworld.domains.blocks import MoveBlock
+
+    assert MoveBlock(1, 2).touched("block") == frozenset({1})
+    assert MoveBlock(1, 2).touched("colour") is None  # grids know nothing of blocks
+
+
 def test_referenced_values_accumulates_and_bails():
     from twinworld.domains.blocks import MoveBlock
     from twinworld.mechanisms import Not
@@ -308,8 +315,101 @@ def test_capabilities_of_grid():
     from twinworld import capabilities
 
     assert capabilities(get_representation("grid")) == frozenset(
-        {"probes", "pertinent_negative", "placebo", "distance"}
+        {"probes", "pertinent_negative", "placebo", "distance", "plausibility"}
     )
+
+
+def test_attribute_score_generalized_matches_inlined_legacy():
+    from twinworld import DEFAULT_CONCEPTS, ConceptNet
+    from twinworld.representation import attribute_score
+
+    def legacy(x, y, w_shape, w_colour, w_location, w_iou):
+        s = 0.0
+        s += w_shape if x.shape == y.shape else 0
+        s += w_colour if x.colour == y.colour else 0
+        s += w_location if x.location == y.location else 0
+        s += w_iou * len(x.cells & y.cells) / len(x.cells | y.cells)
+        return s
+
+    state_a = parse_grid(T("330", "000", "005"))
+    state_b = parse_grid(T("033", "000", "500"))
+    learned = ConceptNet(shape=0.27, colour=3.1, location=2.82, iou=1.5)
+    for x in state_a.objects:
+        for y in state_b.objects:
+            assert attribute_score(x, y) == legacy(x, y, 4.0, 2.0, 1.0, 3.0)
+            assert attribute_score(x, y, DEFAULT_CONCEPTS) == legacy(x, y, 4.0, 2.0, 1.0, 3.0)
+            assert attribute_score(x, y, learned) == legacy(x, y, 0.27, 3.1, 2.82, 1.5)
+
+
+def test_conceptnet_weight_slip_lookups():
+    from twinworld import ConceptNet
+
+    net = ConceptNet(
+        shape=4.0, slip_move=0.25,
+        attributes=(("letter", 2.0),), slips=(("letter", 0.1),),
+    )
+    assert net.weight("shape") == 4.0
+    assert net.weight("letter") == 2.0
+    assert net.weight("size") == 0.0
+    assert net.slip("location") == 0.25  # grid location slip = "move"
+    assert net.slip("letter") == 0.1
+    assert net.slip("unknown") == 0.0
+
+
+def test_learned_concepts_json_still_loads():
+    from pathlib import Path
+
+    from twinworld.concepts import load_concepts
+
+    path = Path(__file__).resolve().parent.parent / "docs" / "learned-concepts.json"
+    net = load_concepts(path)
+    assert net.attributes == () and net.slips == ()  # pre-P6 files stay loadable
+    assert "learned from" in net.source
+
+
+def test_concepts_round_trip_with_attributes(tmp_path):
+    from twinworld import ConceptNet
+    from twinworld.concepts import load_concepts, save_concepts
+
+    net = ConceptNet(attributes=(("letter", 2.0), ("position", 4.0)), slips=(("letter", 0.3),))
+    assert load_concepts(save_concepts(net, tmp_path / "net.json")) == net
+
+
+def test_relations_dispatch_grid_identical():
+    from twinworld.analogy import relations
+
+    state = parse_grid(T("30", "05"))
+    assert relations(state) == {("left_of", 0, 1), ("above", 0, 1), ("same_shape", 0, 1)}
+
+
+def test_byattr_select_str_and_rule_family():
+    from twinworld import ByAttr
+    from twinworld.concepts import rule_family
+    from twinworld.mechanisms import Not, RecolourTo
+
+    state = parse_grid(T("330", "000", "005"))
+    picked = ByAttr("colour", 3).select(state.objects)
+    assert [o.colour for o in picked] == [3]
+    assert str(ByAttr("letter", "a")) == "letter-a objects"
+    assert rule_family(ObjectRule(ByAttr("letter", "a"), RecolourTo(4))) == (
+        "ByAttr[letter]*RecolourTo"
+    )
+    assert rule_family(ObjectRule(Not(ByAttr("letter", "a")), Delete())) == (
+        "Not(ByAttr[letter])*Delete"
+    )
+    assert rule_family(ObjectRule(Not(ByColour(3)), Delete())) == "Not(ByColour)*Delete"
+
+
+def test_structure_map_runs_on_relational_entities():
+    from twinworld import structure_map
+    from twinworld.backends.relational import state_from_towers
+
+    before = state_from_towers([[1, 2], [3], []])
+    after = state_from_towers([[1], [3, 2], []])
+    pairs = [(x, y) for x, y in structure_map(before, after) if x is not None and y is not None]
+    assert pairs, "relational entities must be mappable without grid attributes"
+    mapped = {x.oid: y.oid for x, y in pairs}
+    assert mapped.get(3) == 3  # the unmoved block maps to itself
 
 
 def test_grid_conformance_battery_passes():

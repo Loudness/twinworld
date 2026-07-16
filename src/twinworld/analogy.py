@@ -27,25 +27,30 @@ from .backend import representation_of
 from .concepts import ConceptNet
 from .engine import Task
 from .mechanisms import (
-    All,
-    ByColour,
     Delete,
-    Largest,
-    Not,
     ObjectRule,
     ObjectTransform,
     RecolourTo,
-    Smallest,
     TranslateBy,
 )
-from .representation import Obj, StateGraph, attribute_score
+from .representation import Obj, StateGraph, _attr_names, attribute_score
 
 RELATION_WEIGHT = 3.0  # one preserved relation outweighs a small attribute deficit
 MAX_REPAIR_OBJECTS = 15  # beyond this, swap repair is skipped (attribute-greedy only)
 
 
-def relations(state: StateGraph) -> set[tuple[str, int, int]]:
-    """Directed qualitative relations between objects, keyed by oid."""
+def relations(state) -> set[tuple[str, int, int]]:
+    """Directed qualitative relations between entities, keyed by oid —
+    supplied by the state's representation backend (the grid body lives in
+    backends/grid.py)."""
+    from .backend import representation_of
+
+    return representation_of(state).relations(state)
+
+
+def _grid_relations(state: StateGraph) -> set[tuple[str, int, int]]:
+    """The grid backend's relation vocabulary (kept here historically —
+    consumed via GridRepresentation.relations)."""
     rels: set[tuple[str, int, int]] = set()
     for a in state.objects:
         for b in state.objects:
@@ -83,10 +88,16 @@ def _relational_score(
     return sum(concepts.relation_weight(rel) for rel in preserved)
 
 
-def _greedy_mapping(a: StateGraph, b: StateGraph, concepts: ConceptNet | None = None) -> dict:
+def _greedy_mapping(
+    a, b, concepts: ConceptNet | None = None, overlap=None
+) -> dict:
     """Forbus & Oblinger's greedy merge on attribute score alone."""
     candidates = sorted(
-        ((attribute_score(x, y, concepts), x.oid, y.oid) for x in a.objects for y in b.objects),
+        (
+            (attribute_score(x, y, concepts, overlap), x.oid, y.oid)
+            for x in a.objects
+            for y in b.objects
+        ),
         key=lambda t: (-t[0], t[1], t[2]),
     )
     mapping: dict[int, int] = {}
@@ -107,6 +118,7 @@ def _map_score(
     rels_b: set[tuple[str, int, int]],
     concepts: ConceptNet | None = None,
     slip: bool = False,
+    overlap=None,
 ) -> float:
     """Global mapping quality. With ``slip`` (the Copycat objective), an
     attribute mismatch is not worth zero: it earns the attribute's weight
@@ -115,35 +127,37 @@ def _map_score(
     total = 0.0
     for x, y in mapping.items():
         ox, oy = a_objs[x], b_objs[y]
-        total += attribute_score(ox, oy, concepts)
+        total += attribute_score(ox, oy, concepts, overlap)
         if slip and concepts is not None:
-            if ox.shape != oy.shape:
-                total += concepts.shape * concepts.slip_shape
-            if ox.colour != oy.colour:
-                total += concepts.colour * concepts.slip_colour
-            if ox.location != oy.location:
-                total += concepts.location * concepts.slip_move
+            for name in _attr_names(ox, oy):
+                if ox.attributes.get(name) != oy.attributes.get(name):
+                    total += concepts.weight(name) * concepts.slip(name)
     return total + _relational_score(mapping, rels_a, rels_b, concepts)
 
 
 def structure_map(
-    a: StateGraph, b: StateGraph, concepts: ConceptNet | None = None
+    a, b, concepts: ConceptNet | None = None
 ) -> list[tuple[Obj | None, Obj | None]]:
-    """One-to-one object mapping maximizing attribute + relational agreement.
+    """One-to-one entity mapping maximizing attribute + relational agreement.
 
     Greedy merge on attribute score, then bounded swap-repair passes that
     accept any reassignment improving the global (attribute + relation) score.
-    Returns the same pair structure as ``match_objects``.
+    Returns the same pair structure as ``match_objects``. Works over any
+    backend's entities: attribute weights come from ``concepts`` (name-keyed)
+    and footprint overlap from the states' representation.
     """
+    from .backend import representation_of
+
+    overlap = representation_of(a).overlap
     a_objs = {o.oid: o for o in a.objects}
     b_objs = {o.oid: o for o in b.objects}
-    mapping = _greedy_mapping(a, b, concepts)
+    mapping = _greedy_mapping(a, b, concepts, overlap)
 
     if 0 < len(mapping) and max(len(a.objects), len(b.objects)) <= MAX_REPAIR_OBJECTS:
         rels_a, rels_b = relations(a), relations(b)
 
         def total(m: dict[int, int]) -> float:
-            return _map_score(m, a_objs, b_objs, rels_a, rels_b, concepts)
+            return _map_score(m, a_objs, b_objs, rels_a, rels_b, concepts, overlap=overlap)
 
         best = total(mapping)
         for _ in range(3):  # bounded repair
@@ -183,12 +197,20 @@ class Delta:
 
 
 def pair_deltas(
-    state_in: StateGraph,
-    state_out: StateGraph,
+    state_in,
+    state_out,
     concepts: ConceptNet | None = None,
     mapper: str = "sme",
     rng: random.Random | None = None,
-) -> list[Delta]:
+) -> list:
+    """Per-entity deltas of one train pair, per the structure mapping. The
+    delta type is the backend's own (grid: :class:`Delta`) — transform
+    families and deltas travel together per representation."""
+    from .backend import representation_of
+
+    rep = representation_of(state_in)
+    if concepts is None:
+        concepts = getattr(rep, "default_concepts", None)
     if mapper == "sme":
         pairs = structure_map(state_in, state_out, concepts)
     elif mapper == "copycat":
@@ -202,13 +224,9 @@ def pair_deltas(
         if x is None:
             continue  # appearances are outside the current rule language
         if y is None:
-            deltas.append(Delta(x, None, False, None, True))
-            continue
-        moved = (y.location[0] - x.location[0], y.location[1] - x.location[1])
-        recoloured_to = None
-        if y.colours == frozenset({y.colour}) and x.colours != y.colours:
-            recoloured_to = y.colour
-        deltas.append(Delta(x, moved, x.shape == y.shape, recoloured_to, False))
+            deltas.append(rep.deletion_delta(x))
+        else:
+            deltas.append(rep.pair_delta(x, y))
     return deltas
 
 
@@ -266,6 +284,8 @@ def induce_rules(
     if not rep.transform_families:
         return []
     abstraction = abstraction or rep.default_abstractions[0]
+    if concepts is None:
+        concepts = getattr(rep, "default_concepts", None)
     if mapper == "both":
         rules = induce_rules(task, abstraction, concepts, "sme")
         extra = [
@@ -288,11 +308,8 @@ def induce_rules(
     ]
     by_obj = [{d.obj.oid: d for d in ds} for ds in all_deltas]
 
-    shared_colours = set.intersection(*({o.colour for o in s.objects} for s in inputs))
-    positive = [All(), *[ByColour(c) for c in sorted(shared_colours)], Largest(), Smallest()]
-    # Experiment 4: negation extends the language — "everything except ..."
-    negated = [Not(Largest()), Not(Smallest()), *[Not(ByColour(c)) for c in sorted(shared_colours)]]
-    selectors = positive + negated
+    selectors = rep.candidate_selectors(inputs)
+    make_rule = getattr(rep, "make_rule", ObjectRule)
 
     rules: list[ObjectRule] = []
     for sel in selectors:
@@ -302,10 +319,10 @@ def induce_rules(
         ]
         if any(not group or None in group for group in selected):
             continue
-        flat: list[Delta] = [d for group in selected for d in group]
+        flat: list = [d for group in selected for d in group]
 
         for family in rep.transform_families:
-            rules.extend(ObjectRule(sel, t) for t in family.emit(flat))
+            rules.extend(make_rule(sel, t) for t in family.emit(flat))
 
     unique: list[ObjectRule] = []
     for r in rules:
@@ -320,7 +337,10 @@ def induce_rules(
 
 
 def content_vector(state: StateGraph) -> Counter:
-    """MAC-stage content vector: predicate-occurrence counts (Forbus et al.)."""
+    """MAC-stage content vector: predicate-occurrence counts (Forbus et al.).
+
+    Grid-only (reads colour/size/symmetries): a generic version would change
+    the corpus vectors and there is no non-grid retrieval corpus to serve."""
     v: Counter = Counter()
     v["objects"] = len(state.objects)
     for o in state.objects:

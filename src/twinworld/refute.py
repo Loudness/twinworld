@@ -58,11 +58,12 @@ def referenced_colours(solution: Solution) -> set[int]:
 
 
 def placebo_intervention(solution: Solution) -> RefutationRow:
-    """Recolour one program-irrelevant object in a train input and rerun.
+    """Perturb one program-irrelevant entity in a train input and rerun.
 
-    Expectation: the output equals the factual output with exactly that
-    object's cells recoloured — the perturbation passes through unchanged.
-    Backends without a ``placebo_edit`` capability skip the check.
+    The perturbed attribute is the backend's ``placebo_attr`` (grid: recolour
+    a spectator object; relational: rename a spectator block); the expectation
+    is that the perturbation passes through the program unchanged. Backends
+    without a ``placebo_edit`` capability skip the check.
     """
     backend = representation_of(solution.task)
     edit_fn = getattr(backend, "placebo_edit", None)
@@ -72,29 +73,35 @@ def placebo_intervention(solution: Solution) -> RefutationRow:
             None,
             f"the {backend.name} representation defines no placebo edit",
         )
-    refs = referenced_colours(solution)
+    attr = backend.placebo_attr
+    refs = referenced_values(solution.program, attr=attr)
     for trace in solution.train_traces:
         start = trace.states[0]
-        spectators = [o for o in start.objects if o.colour not in refs]
+        spectators = (
+            []
+            if refs is None  # the program may touch anything: nothing is irrelevant
+            else [o for o in start.objects if o.attributes.get(attr) not in refs]
+        )
         if not spectators:
             continue
         target = spectators[0]
         edit = edit_fn(start, target, frozenset(refs))
         if edit is None:
             continue
-        edited, placebo_colour, expect = edit
+        edited, placebo_value, expect = edit
+        old = target.attributes.get(attr)
         cf = backtrack(solution, trace, edited)
         if not cf.applicable:
             return RefutationRow(
                 "placebo_intervention",
                 False,
-                f"program became inapplicable after perturbing irrelevant "
-                f"colour-{target.colour} object at {target.location}",
+                f"program became inapplicable after perturbing an irrelevant "
+                f"entity ({attr} {old!r}, entity {target.oid})",
             )
         passed = cf.counterfactual.outcome.key == expect(trace.outcome)
         detail = (
-            f"perturbed colour-{target.colour} object at {target.location} to "
-            f"colour {placebo_colour}; outcome {'unchanged elsewhere' if passed else 'CHANGED'}"
+            f"perturbed {attr} {old!r} -> {placebo_value!r} on spectator entity "
+            f"{target.oid}; outcome {'unchanged elsewhere' if passed else 'CHANGED'}"
         )
         return RefutationRow("placebo_intervention", passed, detail)
     return RefutationRow(

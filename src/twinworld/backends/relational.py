@@ -128,6 +128,7 @@ class _Scheme:
 class RelationalRepresentation:
     name = "relational"
     default_abstractions = ("consts",)
+    placebo_attr = "block"  # the attribute the placebo refuter perturbs
     transform_families: tuple = ()  # no object-rule vocabulary: plans use domain primitives
     abstractions: Mapping[str, object] = {"consts": _Scheme("consts"), "towers": _Scheme("towers")}
 
@@ -256,6 +257,32 @@ class RelationalRepresentation:
                     size=1,
                     group=("col", c),
                 )
+
+    def placebo_edit(
+        self, state: RelationalState, spectator, forbidden: Collection
+    ) -> tuple[Towers, int, object] | None:
+        """Rename one program-irrelevant block to a fresh id; the plan must
+        pass the rename through unchanged. (The rename changes the frame —
+        legal here: backtracking through the refuter has no frame gate.)"""
+        old = spectator.attributes["block"]
+        used = set(state.universe) | {v for v in forbidden if isinstance(v, int)}
+        fresh = self.fresh_value("block", used)
+
+        def rename(towers: Towers) -> Towers:
+            return tuple(tuple(fresh if b == old else b for b in t) for t in towers)
+
+        def expect(outcome: RelationalState) -> tuple:
+            return ("relational", rename(outcome.towers), outcome.height)
+
+        return rename(state.towers), fresh, expect
+
+    def plausible(self, state: RelationalState) -> bool:
+        """Constraint-consistency certificate: every block id occurs exactly
+        once and no tower exceeds the height bound (when one is declared)."""
+        blocks = [b for tower in state.towers for b in tower]
+        if len(blocks) != len(set(blocks)):
+            return False
+        return state.height is None or all(len(t) <= state.height for t in state.towers)
 
     def render_raw(self, raw, caption: str | None = None, diff_against=None) -> str:
         """Towers as a coloured column table (block id shown in the cell).

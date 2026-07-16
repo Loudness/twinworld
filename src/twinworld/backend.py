@@ -79,6 +79,15 @@ class Representation(Protocol):
     ``probe_perturbations``, ``addition_values`` + ``addition_catalogue``,
     ``placebo_edit``, ``render_raw``/``render_html``/``render_key``,
     ``render_text``, ``distance``, ``plausible``, ``generate``.
+
+    Rule-induction hooks (required exactly when ``transform_families`` is
+    non-empty): ``candidate_selectors(inputs) -> list`` and
+    ``pair_delta(x, y)`` / ``deletion_delta(x)`` producing the backend's own
+    delta type for its families. Further optional members: ``make_rule(sel,
+    transform)`` (defaults to the grid ObjectRule), ``default_concepts``
+    (a ConceptNet consulted when the caller passes none — without it a
+    non-grid backend's attributes all weigh zero and mapping starves), and
+    ``placebo_attr`` (the attribute the placebo refuter perturbs).
     """
 
     name: str
@@ -130,6 +139,9 @@ REPRESENTATIONS: dict[str, Representation] = {}
 _BUILTIN_MODULES = {
     "grid": "twinworld.backends.grid",
     "relational": "twinworld.backends.relational",
+    "sequence": "twinworld.backends.sequence",
+    "tabular": "twinworld.backends.tabular",
+    "graph": "twinworld.backends.graph",
 }
 
 _CAPABILITY_MEMBERS = {

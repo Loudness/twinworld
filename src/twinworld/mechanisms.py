@@ -249,6 +249,23 @@ class Smallest:
 
 
 @dataclass(frozen=True)
+class ByAttr:
+    """Generic attribute-equality selector — the non-grid backends' ByColour.
+
+    Selects every entity whose name-keyed ``attributes`` carry ``value`` under
+    ``attr`` (entities without the attribute never match)."""
+
+    attr: str
+    value: "object"
+
+    def select(self, objects: tuple[Obj, ...]) -> tuple[Obj, ...]:
+        return tuple(o for o in objects if o.attributes.get(self.attr) == self.value)
+
+    def __str__(self) -> str:
+        return f"{self.attr}-{self.value} objects"
+
+
+@dataclass(frozen=True)
 class Not:
     """Selector negation (thesis Experiment 4): the complement of ``inner``."""
 
@@ -262,7 +279,7 @@ class Not:
         return f"objects other than {self.inner}"
 
 
-Selector = All | ByColour | Largest | Smallest | Not
+Selector = All | ByAttr | ByColour | Largest | Smallest | Not
 
 
 @dataclass(frozen=True)

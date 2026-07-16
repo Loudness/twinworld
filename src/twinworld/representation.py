@@ -261,33 +261,65 @@ def parse_grid(grid: Grid, abstraction: str = "cc4", background: int | None = No
     return StateGraph(len(grid), len(grid[0]), bg, objects, abstraction)
 
 
-def attribute_score(x: Obj, y: Obj, concepts: ConceptNet | None = None) -> float:
-    """Property-level similarity of two objects: shared shape, colour,
-    location, and cell overlap (IoU). Used for identity matching and as the
-    local-match score inside structure mapping. ``concepts`` swaps the
-    hand-coded weights for learned ones (None keeps the historical 4/2/1/3)."""
+# the grid ontology's hand-coded weights (attribute_score's concepts=None path)
+_HAND_WEIGHTS = {"shape": 4.0, "colour": 2.0, "location": 1.0}
+_HAND_IOU = 3.0
+# core attribute names score in this historical order; other names follow sorted
+_CORE_ATTRS = ("shape", "colour", "location")
+
+
+def _grid_overlap(x, y) -> float:
+    return len(x.cells & y.cells) / len(x.cells | y.cells)
+
+
+def _attr_names(x, y) -> list[str]:
+    present = set(x.attributes) | set(y.attributes)
+    names = [n for n in _CORE_ATTRS if n in present]
+    names += sorted(present - set(_CORE_ATTRS))
+    return names
+
+
+def attribute_score(x, y, concepts: ConceptNet | None = None, overlap=None) -> float:
+    """Property-level similarity of two entities: weighted agreement over the
+    name-keyed attribute ontology plus a footprint-overlap term. Used for
+    identity matching and as the local-match score inside structure mapping.
+    ``concepts`` swaps the hand-coded weights for learned/backend ones (None
+    keeps the historical grid 4/2/1/3, where unknown attributes weigh 0);
+    ``overlap`` is the backend's footprint measure (None keeps grid cell IoU).
+    """
     if concepts is None:
-        w_shape, w_colour, w_location, w_iou = 4.0, 2.0, 1.0, 3.0
+
+        def weight(name: str) -> float:
+            return _HAND_WEIGHTS.get(name, 0.0)
+
+        iou_weight = _HAND_IOU
     else:
-        w_shape, w_colour, w_location, w_iou = (
-            concepts.shape, concepts.colour, concepts.location, concepts.iou,
-        )
+        weight = concepts.weight
+        iou_weight = concepts.iou
     s = 0.0
-    s += w_shape if x.shape == y.shape else 0
-    s += w_colour if x.colour == y.colour else 0
-    s += w_location if x.location == y.location else 0
-    s += w_iou * len(x.cells & y.cells) / len(x.cells | y.cells)
+    for name in _attr_names(x, y):
+        s += weight(name) if x.attributes.get(name) == y.attributes.get(name) else 0
+    measure = overlap if overlap is not None else _grid_overlap
+    s += iou_weight * measure(x, y)
     return s
 
 
 def match_objects(a: StateGraph, b: StateGraph) -> list[tuple[Obj | None, Obj | None]]:
     """Greedy persistent-identity matching between two states.
 
-    Pairs are scored by :func:`attribute_score`; each object is used at most
-    once. Unmatched objects pair with None (appeared / disappeared).
+    Pairs are scored by :func:`attribute_score` under the states' backend
+    overlap; each object is used at most once. Unmatched objects pair with
+    None (appeared / disappeared).
     """
+    from .backend import representation_of
+
+    overlap = representation_of(a).overlap
     candidates = sorted(
-        ((attribute_score(x, y), x.oid, y.oid, x, y) for x in a.objects for y in b.objects),
+        (
+            (attribute_score(x, y, overlap=overlap), x.oid, y.oid, x, y)
+            for x in a.objects
+            for y in b.objects
+        ),
         key=lambda t: (-t[0], t[1], t[2]),
     )
     used_a: set[int] = set()

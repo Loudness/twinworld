@@ -12,7 +12,15 @@ from typing import Callable, Collection, Iterator, Mapping, Sequence
 
 from ..analogy import GRID_TRANSFORM_FAMILIES
 from ..backend import Addition, register
-from ..mechanisms import _rebuild, candidate_primitives
+from ..mechanisms import (
+    All,
+    ByColour,
+    Largest,
+    Not,
+    Smallest,
+    _rebuild,
+    candidate_primitives,
+)
 from ..representation import (
     ABSTRACTIONS,
     MAX_COLOURS,
@@ -78,6 +86,7 @@ class GridRepresentation:
     name = "grid"
     default_abstractions = ("cc4", "cc8", "mcc")
     transform_families = GRID_TRANSFORM_FAMILIES
+    placebo_attr = "colour"  # the attribute the placebo refuter perturbs
 
     @property
     def abstractions(self) -> Mapping[str, object]:
@@ -118,9 +127,35 @@ class GridRepresentation:
         return next((c for c in range(MAX_COLOURS - 1, -1, -1) if c not in used), None)
 
     def relations(self, state: StateGraph) -> set[tuple[str, int, int]]:
-        from ..analogy import relations
+        from ..analogy import _grid_relations
 
-        return relations(state)
+        return _grid_relations(state)
+
+    def candidate_selectors(self, inputs: Sequence[StateGraph]) -> list:
+        """The grid rule-induction selector vocabulary, in the historical
+        order: positive selectors first, negated ones after (Experiment 4)."""
+        shared_colours = set.intersection(*({o.colour for o in s.objects} for s in inputs))
+        positive = [All(), *[ByColour(c) for c in sorted(shared_colours)], Largest(), Smallest()]
+        negated = [
+            Not(Largest()),
+            Not(Smallest()),
+            *[Not(ByColour(c)) for c in sorted(shared_colours)],
+        ]
+        return positive + negated
+
+    def pair_delta(self, x: Obj, y: Obj):
+        from ..analogy import Delta
+
+        moved = (y.location[0] - x.location[0], y.location[1] - x.location[1])
+        recoloured_to = None
+        if y.colours == frozenset({y.colour}) and x.colours != y.colours:
+            recoloured_to = y.colour
+        return Delta(x, moved, x.shape == y.shape, recoloured_to, False)
+
+    def deletion_delta(self, x: Obj):
+        from ..analogy import Delta
+
+        return Delta(x, None, False, None, True)
 
     def overlap(self, a: Obj, b: Obj) -> float:
         return len(a.cells & b.cells) / len(a.cells | b.cells)
@@ -211,6 +246,11 @@ class GridRepresentation:
             return _recolour_cells(outcome, _find(outcome, spectator), colour)
 
         return _recolour_cells(state, spectator, colour), colour, expect
+
+    def plausible(self, state: StateGraph) -> bool:
+        """Any rendered grid is a valid grid world — plausibility is trivially
+        certified here; richer backends check real constraints."""
+        return True
 
     def distance(self, a: StateGraph, b: StateGraph) -> float:
         """Approximate object-graph edit distance: matched objects contribute
