@@ -21,7 +21,9 @@ import math
 import random
 from collections import Counter
 from dataclasses import dataclass
+from typing import Iterator, Sequence
 
+from .backend import representation_of
 from .concepts import ConceptNet
 from .engine import Task
 from .mechanisms import (
@@ -31,11 +33,12 @@ from .mechanisms import (
     Largest,
     Not,
     ObjectRule,
+    ObjectTransform,
     RecolourTo,
     Smallest,
     TranslateBy,
 )
-from .representation import Obj, StateGraph, attribute_score, parse_grid
+from .representation import Obj, StateGraph, attribute_score
 
 RELATION_WEIGHT = 3.0  # one preserved relation outweighs a small attribute deficit
 MAX_REPAIR_OBJECTS = 15  # beyond this, swap repair is skipped (attribute-greedy only)
@@ -209,9 +212,43 @@ def pair_deltas(
     return deltas
 
 
+class TranslateFamily:
+    """Emit TranslateBy when every selected object made the same non-zero,
+    shape-stable move and none was deleted."""
+
+    def emit(self, deltas: Sequence[Delta]) -> Iterator[ObjectTransform]:
+        moves = {d.moved for d in deltas}
+        if len(moves) == 1 and not any(d.deleted for d in deltas):
+            (move,) = moves
+            if move != (0, 0) and all(d.shape_stable for d in deltas):
+                yield TranslateBy(*move)
+
+
+class RecolourFamily:
+    """Emit RecolourTo when every selected object became uniformly one colour."""
+
+    def emit(self, deltas: Sequence[Delta]) -> Iterator[ObjectTransform]:
+        targets = {d.recoloured_to for d in deltas}
+        if len(targets) == 1 and None not in targets:
+            (target,) = targets
+            yield RecolourTo(target)
+
+
+class DeleteFamily:
+    """Emit Delete when every selected object disappeared."""
+
+    def emit(self, deltas: Sequence[Delta]) -> Iterator[ObjectTransform]:
+        if all(d.deleted for d in deltas):
+            yield Delete()
+
+
+# the grid backend's rule-induction vocabulary, in the historical emission order
+GRID_TRANSFORM_FAMILIES = (TranslateFamily(), RecolourFamily(), DeleteFamily())
+
+
 def induce_rules(
     task: Task,
-    abstraction: str = "cc4",
+    abstraction: str | None = None,
     concepts: ConceptNet | None = None,
     mapper: str = "sme",
 ) -> list[ObjectRule]:
@@ -222,8 +259,13 @@ def induce_rules(
     engine remains the verifier — bad proposals simply fail search. ``mapper``
     selects the correspondence backend ("sme", "copycat", or "both" = the
     deduplicated union); learned ``concepts.priors`` reorder the candidates,
-    never filter them.
+    never filter them. The emitted transform vocabulary is the representation
+    backend's ``transform_families``; a backend without one induces nothing.
     """
+    rep = representation_of(task)
+    if not rep.transform_families:
+        return []
+    abstraction = abstraction or rep.default_abstractions[0]
     if mapper == "both":
         rules = induce_rules(task, abstraction, concepts, "sme")
         extra = [
@@ -236,8 +278,8 @@ def induce_rules(
             rules = sorted(rules, key=lambda r: -concepts.prior(r))
         return rules
 
-    inputs = [parse_grid(i, abstraction) for i, _ in task.train]
-    outputs = [parse_grid(o, abstraction) for _, o in task.train]
+    inputs = [rep.parse(i, abstraction) for i, _ in task.train]
+    outputs = [rep.parse(o, abstraction) for _, o in task.train]
     if any(not s.objects for s in inputs):
         return []
     all_deltas = [
@@ -262,19 +304,8 @@ def induce_rules(
             continue
         flat: list[Delta] = [d for group in selected for d in group]
 
-        moves = {d.moved for d in flat}
-        if len(moves) == 1 and not any(d.deleted for d in flat):
-            (move,) = moves
-            if move != (0, 0) and all(d.shape_stable for d in flat):
-                rules.append(ObjectRule(sel, TranslateBy(*move)))
-
-        targets = {d.recoloured_to for d in flat}
-        if len(targets) == 1 and None not in targets:
-            (target,) = targets
-            rules.append(ObjectRule(sel, RecolourTo(target)))
-
-        if all(d.deleted for d in flat):
-            rules.append(ObjectRule(sel, Delete()))
+        for family in rep.transform_families:
+            rules.extend(ObjectRule(sel, t) for t in family.emit(flat))
 
     unique: list[ObjectRule] = []
     for r in rules:

@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Iterable, Protocol
+from typing import TYPE_CHECKING, ClassVar, Iterable, Protocol
 
 if TYPE_CHECKING:
     from .concepts import ConceptNet
@@ -107,6 +107,21 @@ class Obj:
             syms.add("rot180")
         return frozenset(syms)
 
+    @cached_property
+    def attributes(self) -> dict[str, object]:
+        """Name-keyed property ontology (the generic Entity view of this object)."""
+        return {
+            "colour": self.colour,
+            "shape": self.shape,
+            "location": self.location,
+            "size": self.size,
+        }
+
+    @property
+    def extent(self) -> frozenset[Pixel]:
+        """Canonical footprint — the coloured-pixel set itself."""
+        return self.pixels
+
 
 class AbstractionScheme(Protocol):
     name: str
@@ -181,6 +196,8 @@ class StateGraph:
     Equality and hashing go through the rendered grid — two states are the same
     state iff they look the same, regardless of how they were segmented.
     """
+
+    representation: ClassVar[str] = "grid"
 
     height: int
     width: int

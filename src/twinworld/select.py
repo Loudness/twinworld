@@ -29,9 +29,10 @@ from .api import (
     identify,
     model,
 )
+from .backend import representation_of
 from .discriminate import diagnose, probes
 from .engine import ApplyCache, Program, Task
-from .representation import Grid, parse_grid
+from .representation import Grid
 
 
 def _classes(report: ConfidenceReport) -> tuple[tuple[Program, ...], ...]:
@@ -69,6 +70,8 @@ def _fewest_absences(rep, report, rng) -> int:
     """Prefer the class whose representative has the fewest pertinent-negative
     witnesses: hypotheses with absence dependencies are fragile (the M5
     finding, used as a selection criterion)."""
+    if not hasattr(representation_of(rep.task), "addition_catalogue"):
+        return _first(rep, report, rng)
     counts = []
     for cls in _classes(report):
         program = cls[0]
@@ -113,12 +116,14 @@ def resolve_with_probe(
     task: Task,
     programs: list[Program],
     oracle: Program,
-    abstraction: str = "cc4",
+    abstraction: str | None = None,
     max_queries: int = 2,
 ) -> tuple[Program, int]:
     """Active counterfactual discrimination: answer the diagnosing probe with
     the oracle, keep the classes consistent with the answer, repeat. Returns
     (a representative of the surviving first class, queries actually spent)."""
+    rep = representation_of(task)
+    abstraction = abstraction or rep.default_abstractions[0]
     cache = ApplyCache()
     pool = [tuple(p) for p in programs]
     probe_grids = probes(task, abstraction)
@@ -128,7 +133,7 @@ def resolve_with_probe(
         if not report.underdetermined or report.probe is None:
             break
         index = probe_grids.index(report.probe)
-        trace = cache.run(parse_grid(report.probe, abstraction), tuple(oracle))
+        trace = cache.run(rep.parse(report.probe, abstraction), tuple(oracle))
         answer = trace.outcome.key if trace is not None else None
         queries += 1
         survivors = [

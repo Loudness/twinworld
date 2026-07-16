@@ -20,6 +20,15 @@ from .api import (
     refute,
 )
 from .analogy import content_vector, induce_rules, retrieve, structure_map
+from .backend import (
+    REPRESENTATIONS,
+    ConformanceReport,
+    capabilities,
+    conformance_battery,
+    get_representation,
+    register,
+    representation_of,
+)
 from .concepts import DEFAULT_CONCEPTS, ConceptNet, learn_concepts
 from .engine import Counterfactual, Solution, Task, Trace, UnsolvedTaskError, solve
 from .mechanisms import (
@@ -51,12 +60,14 @@ __all__ = [
     "ByColour",
     "CausalRepresentation",
     "ConfidenceReport",
+    "ConformanceReport",
     "Contrastive",
     "ConceptNet",
     "Counterfactual",
     "CounterfactualSet",
     "DEFAULT_ABSTRACTIONS",
     "DEFAULT_CONCEPTS",
+    "REPRESENTATIONS",
     "Delete",
     "Grid",
     "Largest",
@@ -89,8 +100,11 @@ __all__ = [
     "as_grid",
     "assess",
     "candidate_primitives",
+    "capabilities",
     "compute",
+    "conformance_battery",
     "evaluate",
+    "get_representation",
     "identify",
     "learn_concepts",
     "match_objects",
@@ -99,6 +113,8 @@ __all__ = [
     "predict",
     "proximity",
     "refute",
+    "register",
+    "representation_of",
     "select",
     "solve",
     "sparsity",

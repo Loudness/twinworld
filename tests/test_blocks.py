@@ -64,20 +64,29 @@ def test_move_preimage_round_trip():
 def test_plan_induction_with_domain_primitives(stack_task):
     rep = plan(stack_task)
     assert rep.solution.program == (MoveBlock(2, 1), MoveBlock(1, 2))
-    assert towers_of(rep.solution.test_traces[0].outcome.grid) == [[], [5, 2], [1]]
+    assert rep.solution.test_traces[0].outcome.towers == ((), (5, 2), (1,))
 
 
-def test_arc_vocabulary_cannot_express_gravity(stack_task):
+def test_arc_vocabulary_cannot_express_gravity():
     """Block 2's displacement differs across pairs (landing height depends on
     the destination stack), so no translation-based rule fits — the domain
-    mechanism is genuinely necessary."""
+    mechanism is genuinely necessary. Posed on the GRID serialization, whose
+    default primitives are the ARC vocabulary."""
+    grid_task = task_from_towers(
+        train=[
+            ([[1, 2], [], []], [[], [2], [1]]),
+            ([[1, 2], [3], []], [[], [3, 2], [1]]),
+        ],
+        test=[([[1, 2], [5], []], [[], [5, 2], [1]])],
+        representation="grid",
+    )
     with pytest.raises(UnsolvedTaskError):
-        twinworld.model(stack_task)
+        twinworld.model(grid_task)
 
 
 def test_contrastive_why_here_and_not_there(stack_task):
     rep = plan(stack_task)
-    foil = build_grid([[], [5, 2, 1], []])  # what if block 1 were ON block 2?
+    foil = [[], [5, 2, 1], []]  # what if block 1 were ON block 2?
     cfs = twinworld.compute(twinworld.identify(rep, Contrastive(foil, on="test[0]")))
     assert cfs.items
     assert all(item.metrics.sparsity == 1 for item in cfs.items)

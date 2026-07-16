@@ -5,7 +5,7 @@ import html
 
 import twinworld
 from conftest import T
-from twinworld.domains.blocks import build_grid, candidate_moves, task_from_towers
+from twinworld.domains.blocks import candidate_moves, task_from_towers
 from twinworld.representation import as_grid, parse_grid
 from twinworld.viz import (
     PALETTE,
@@ -105,7 +105,7 @@ def test_report_blocks_world():
         primitives=candidate_moves(task),
         induction="never",
         max_depth=2,
-        foil=build_grid([[], [5, 2, 1], []]),
+        foil=[[], [5, 2, 1], []],
         foil_on="test[0]",
     )
     assert "move block" in doc

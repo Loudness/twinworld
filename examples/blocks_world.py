@@ -10,7 +10,7 @@ Run:  python examples/blocks_world.py
 import twinworld
 from twinworld import Contrastive, IdentificationError, Interventional, PertinentNegative
 from twinworld.discriminate import diagnose
-from twinworld.domains.blocks import build_grid, candidate_moves, task_from_towers, towers_of
+from twinworld.domains.blocks import candidate_moves, task_from_towers
 from twinworld.engine import solve_all
 
 
@@ -18,8 +18,8 @@ def rule(title):
     print(f"\n{'─' * 72}\n{title}\n{'─' * 72}")
 
 
-def show_towers(grid, indent="    "):
-    print(indent + " | ".join(str(t) if t else "[]" for t in towers_of(grid)))
+def show_towers(towers, indent="    "):
+    print(indent + " | ".join(str(list(t)) if t else "[]" for t in towers))
 
 
 task = task_from_towers(
@@ -38,10 +38,10 @@ print(f"programs tried : {sol.programs_tried}")
 print("\ntest instance (columns, bottom->top):")
 show_towers(task.test[0][0])
 print("plan result:")
-show_towers(sol.test_traces[0].outcome.grid)
+show_towers(sol.test_traces[0].outcome.towers)
 
 rule("2. contrastive  —  why is block 1 in column 2 and not on top of block 2?")
-foil = build_grid([[], [5, 2, 1], []])
+foil = [[], [5, 2, 1], []]
 cfs = twinworld.compute(twinworld.identify(rep, Contrastive(foil, on="test[0]")))
 print()
 for item in cfs.items:

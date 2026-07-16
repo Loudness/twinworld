@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .backend import representation_of
 from .engine import Counterfactual, Program, Solution
-from .representation import StateGraph, as_grid, match_objects, parse_grid
+from .representation import StateGraph
 
 
 def validity(solution: Solution, cf: Counterfactual) -> bool | None:
@@ -25,11 +26,12 @@ def validity(solution: Solution, cf: Counterfactual) -> bool | None:
         return None
     if not cf.applicable:
         return False
+    rep = representation_of(solution.task)
     for grid_in, grid_out in solution.task.train:
         trace = solution.cache.run(
             _parse_like(solution, grid_in), cf.program
         )
-        if trace is None or trace.outcome.key != as_grid(grid_out):
+        if trace is None or trace.outcome.key != rep.canon(grid_out):
             return False
     return True
 
@@ -44,16 +46,31 @@ def sparsity(factual: Program, counterfactual: Program) -> int:
 def proximity(a: StateGraph, b: StateGraph) -> float:
     """Approximate object-graph edit distance between two states.
 
-    Matched objects contribute the number of differing properties
-    (colour, shape, location); unmatched objects cost 2 each.
-    Greedy matching — an upper bound on the true edit distance.
+    Delegates to the backend's ``distance`` when it defines one (the grid
+    backend's reproduces the historical matched-object property diffs);
+    otherwise a generic fallback matches entities by oid and charges 1 per
+    differing attribute and 2 per unmatched entity.
     """
+    backend = representation_of(a)
+    dist = getattr(backend, "distance", None)
+    if dist is not None:
+        return dist(a, b)
+    return _attribute_distance(a, b)
+
+
+def _attribute_distance(a, b) -> float:
+    by_oid = {o.oid: o for o in b.objects}
     cost = 0.0
-    for x, y in match_objects(a, b):
-        if x is None or y is None:
+    matched = 0
+    for x in a.objects:
+        y = by_oid.get(x.oid)
+        if y is None:
             cost += 2.0
             continue
-        cost += (x.colour != y.colour) + (x.shape != y.shape) + (x.location != y.location)
+        matched += 1
+        keys = set(x.attributes) | set(y.attributes)
+        cost += sum(1.0 for k in keys if x.attributes.get(k) != y.attributes.get(k))
+    cost += 2.0 * (len(b.objects) - matched)
     return cost
 
 
@@ -134,4 +151,5 @@ def evaluate(solution: Solution, cf: Counterfactual) -> MetricVector:
 
 
 def _parse_like(solution: Solution, grid) -> StateGraph:
-    return parse_grid(grid, solution.train_traces[0].states[0].abstraction)
+    rep = representation_of(solution.task)
+    return rep.parse(grid, solution.train_traces[0].states[0].abstraction)
