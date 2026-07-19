@@ -1,13 +1,69 @@
 # twinworld
 
-Counterfactual reasoning and explanation over **symbolic state-transition traces** — a
-[DoWhy](https://github.com/py-why/dowhy)-style staged API (`model → identify → compute → refute`)
-where the system is a deterministic solver rather than a statistical model, abduction is exact
-trace replay rather than noise inversion, and counterfactuals are therefore point-identified.
+## What this is
 
-First domain: the [ARC challenge](https://github.com/fchollet/ARC-AGI). The solving core is
-non-connectionist (no neural networks, no LLMs); neural components can plug in later through the
-backend registry without touching the core.
+`twinworld` is a Python library for counterfactual reasoning and explanation over symbolic
+state-transition traces. It exposes a [DoWhy](https://github.com/py-why/dowhy)-style staged API
+(`model → identify → compute → refute`), but the underlying model is a deterministic symbolic
+solver, so counterfactuals are point-identified certificates rather than statistical estimates.
+The solving core is non-connectionist — no neural nets or LLMs in the solving path. This is part
+of a PhD project; module docstrings reference the thesis experiments they support.
+
+First domain: the [ARC challenge](https://github.com/fchollet/ARC-AGI). Neural components can
+plug in later through the backend registry without touching the core.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    user["your code"] --> api
+
+    api["api.py<br/>model → identify → compute → refute<br/>assess / predict"]
+    engine["engine.py — causal core<br/>Trace = structural causal model<br/>solve · abduce_inputs"]
+    mechanisms["mechanisms.py<br/>pure state functions<br/>apply · preimage"]
+    backend["backend.py<br/>Representation contract<br/>(laws L1–L7)"]
+
+    api --> engine
+    api --> support
+    engine --> mechanisms
+    mechanisms --> backend
+
+    subgraph support["supporting modules"]
+        direction TB
+        search["analogy · concepts · copycat"]
+        diag["discriminate · select · alternatives"]
+        qc["metrics · refute · asp"]
+        viz["viz — self-contained HTML reports"]
+    end
+
+    subgraph backends["backends/ — registered by name"]
+        direction LR
+        grid["grid"]
+        relational["relational"]
+        sequence["sequence"]
+        tabular["tabular"]
+        graphb["graph"]
+    end
+
+    backend --> backends
+
+    subgraph domains["domains/ — thin adapters"]
+        direction LR
+        arc["arc"]
+        blocks["blocks"]
+        causalarc["causalarc"]
+    end
+
+    arc -.-> grid
+    causalarc -.-> grid
+    blocks -.-> relational
+```
+
+The staged verbs in `api.py` drive the causal core in `engine.py`, where a `Trace` of states
+connected by pure `Mechanism` applications *is* the structural causal model. The core touches
+state only through the `Representation` contract in `backend.py`, so the same pipeline runs
+unchanged on all five backends; domain plugins adapt a real problem onto a backend by supplying
+perception and a primitive vocabulary.
 
 ## Installation
 
