@@ -39,7 +39,13 @@ _RELATION_NAMES = ("above", "larger", "left_of", "same_colour", "same_shape")
 
 @dataclass(frozen=True)
 class ConceptNet:
-    """The concept network as explicit data; defaults = the hand-coded values."""
+    """The concept network as explicit data; defaults = the hand-coded values.
+
+    The four named attribute weights and three named slips are the GRID
+    ontology (shape/colour/location + iou, slip location = "move"); other
+    backends carry their weights in the name-keyed ``attributes``/``slips``
+    mappings, consulted through :meth:`weight` and :meth:`slip`.
+    """
 
     shape: float = 4.0
     colour: float = 2.0
@@ -52,9 +58,31 @@ class ConceptNet:
     slip_delete: float = 0.0
     priors: tuple[tuple[str, float], ...] = ()  # (selector*transform family, freq)
     source: str = "hand-coded"
+    attributes: tuple[tuple[str, float], ...] = ()  # non-grid attribute weights
+    slips: tuple[tuple[str, float], ...] = ()  # non-grid slip probabilities
 
     def relation_weight(self, name: str) -> float:
         return dict(self.relations).get(name, 0.0)
+
+    def weight(self, name: str) -> float:
+        """Weight of an attribute by name; unknown attributes weigh nothing."""
+        if name == "shape":
+            return self.shape
+        if name == "colour":
+            return self.colour
+        if name == "location":
+            return self.location
+        return dict(self.attributes).get(name, 0.0)
+
+    def slip(self, name: str) -> float:
+        """Slippage probability of an attribute by name (grid location = move)."""
+        if name == "shape":
+            return self.slip_shape
+        if name == "colour":
+            return self.slip_colour
+        if name == "location":
+            return self.slip_move
+        return dict(self.slips).get(name, 0.0)
 
     def prior(self, rule: ObjectRule) -> float:
         return dict(self.priors).get(rule_family(rule), 0.0)
@@ -73,15 +101,25 @@ def load_concepts(path: str | Path) -> ConceptNet:
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     raw["relations"] = tuple((n, w) for n, w in raw["relations"])
     raw["priors"] = tuple((f, p) for f, p in raw["priors"])
+    # tuple-normalize the name-keyed mappings; .get keeps pre-P6 files loadable
+    raw["attributes"] = tuple((n, w) for n, w in raw.get("attributes", ()))
+    raw["slips"] = tuple((n, w) for n, w in raw.get("slips", ()))
     return ConceptNet(**raw)
+
+
+def _selector_name(sel) -> str:
+    inner = getattr(sel, "inner", None)
+    if inner is not None:
+        return f"Not({_selector_name(inner)})"
+    attr = getattr(sel, "attr", None)
+    if attr is not None:  # ByAttr carries its attribute name into the family key
+        return f"ByAttr[{attr}]"
+    return type(sel).__name__
 
 
 def rule_family(rule: ObjectRule) -> str:
     """'ByColour*RecolourTo', 'Not(Largest)*Delete', ... — the prior's key space."""
-    sel = rule.selector
-    inner = getattr(sel, "inner", None)
-    sel_name = f"Not({type(inner).__name__})" if inner is not None else type(sel).__name__
-    return f"{sel_name}*{type(rule.transform).__name__}"
+    return f"{_selector_name(rule.selector)}*{type(rule.transform).__name__}"
 
 
 # ---------------------------------------------------------------- estimation

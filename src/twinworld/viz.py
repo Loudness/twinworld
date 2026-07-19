@@ -35,9 +35,10 @@ from .api import (
     model,
     refute,
 )
+from .backend import Raw, representation_of
 from .engine import Task, Trace, UnsolvedTaskError
 from .metrics import MetricVector
-from .representation import ABSTRACTIONS, Grid, StateGraph, as_grid, parse_grid
+from .representation import Grid, StateGraph, as_grid
 
 PALETTE = {
     0: "#252525", 1: "#0074D9", 2: "#FF4136", 3: "#37D449", 4: "#FFDC00",
@@ -131,11 +132,46 @@ def state_html(state: StateGraph, caption: str | None = None) -> str:
 
 def trace_html(trace: Trace, caption: str | None = None) -> str:
     """state → mechanism → state … for one solving trace."""
-    parts = [grid_html(trace.states[0].grid, caption)]
+    parts = [_render_state(trace.states[0], caption)]
     for mech, state in zip(trace.mechanisms, trace.states[1:]):
         parts.append(f'<div class="arrow">→<br><code>{_esc(mech)}</code></div>')
-        parts.append(grid_html(state.grid))
+        parts.append(_render_state(state))
     return _row(*parts)
+
+
+# ------------------------------------------------- per-backend render dispatch
+# The grid branches call grid_html/state_html with the historical arguments,
+# so grid pages are byte-identical; other backends supply render_raw /
+# render_html / render_key (the "viz" capability).
+
+
+def _render_raw(backend, raw: Raw, caption: str | None = None, diff_against=None) -> str:
+    """A raw task payload (train/test pairs, probes, foils) as a figure."""
+    if backend.name == "grid":
+        return grid_html(raw, caption, diff_against=diff_against)
+    return backend.render_raw(raw, caption=caption, diff_against=diff_against)
+
+
+def _render_state(state, caption: str | None = None, diff_state=None, diff_raw=None) -> str:
+    """A parsed state as a figure (no object outlines)."""
+    if state.representation == "grid":
+        diff = diff_state.grid if diff_state is not None else diff_raw
+        return grid_html(state.grid, caption, diff_against=diff)
+    return representation_of(state).render_html(state, caption=caption)
+
+
+def _render_segmentation(state, caption: str) -> str:
+    """A parsed state with its object segmentation made visible."""
+    if state.representation == "grid":
+        return state_html(state, caption)
+    return representation_of(state).render_html(state, caption=caption)
+
+
+def _render_key(backend, key, caption: str | None = None) -> str:
+    """A canonical outcome key as a figure (grid keys ARE grids)."""
+    if backend.name == "grid":
+        return grid_html(key, caption)
+    return backend.render_key(key, caption=caption)
 
 
 def _row(*parts: str) -> str:
@@ -163,20 +199,20 @@ def _item_html(item: CounterfactualItem, show_inputs: bool = False) -> str:
     if cf.applicable:
         grids = []
         if show_inputs:
-            grids.append(grid_html(cf.factual.states[0].grid, "factual input"))
+            grids.append(_render_state(cf.factual.states[0], "factual input"))
             grids.append(
-                grid_html(
-                    cf.counterfactual.states[0].grid,
+                _render_state(
+                    cf.counterfactual.states[0],
                     "counterfactual input",
-                    diff_against=cf.factual.states[0].grid,
+                    diff_state=cf.factual.states[0],
                 )
             )
-        grids.append(grid_html(cf.factual.outcome.grid, "factual outcome"))
+        grids.append(_render_state(cf.factual.outcome, "factual outcome"))
         grids.append(
-            grid_html(
-                cf.counterfactual.outcome.grid,
+            _render_state(
+                cf.counterfactual.outcome,
                 "counterfactual outcome",
-                diff_against=cf.factual.outcome.grid,
+                diff_state=cf.factual.outcome,
             )
         )
         parts.append(_row(*grids))
@@ -210,28 +246,30 @@ def _header(rep: CausalRepresentation) -> str:
 def _test_traces(rep: CausalRepresentation) -> list[Trace | None]:
     """One trace per test input (Solution.test_traces drops inapplicable inputs)."""
     sol = rep.solution
+    backend = representation_of(rep.task)
     return [
-        sol.cache.run(parse_grid(test_in, rep.abstraction), sol.program)
+        sol.cache.run(backend.parse(test_in, rep.abstraction), sol.program)
         for test_in, _ in rep.task.test
     ]
 
 
 def _demos(task: Task, rep: CausalRepresentation | None) -> str:
+    backend = representation_of(task)
     rows = []
     for i, (grid_in, grid_out) in enumerate(task.train):
         rows.append(
             _row(
-                grid_html(grid_in, f"train[{i}] input"),
+                _render_raw(backend, grid_in, f"train[{i}] input"),
                 '<div class="arrow">→</div>',
-                grid_html(grid_out, f"train[{i}] output"),
+                _render_raw(backend, grid_out, f"train[{i}] output"),
             )
         )
     predicted = _test_traces(rep) if rep is not None else [None] * len(task.test)
     for i, (test_in, test_out) in enumerate(task.test):
         parts = [
-            grid_html(test_in, f"test[{i}] input"),
+            _render_raw(backend, test_in, f"test[{i}] input"),
             '<div class="arrow">→</div>',
-            grid_html(test_out, f"test[{i}] expected (held out)"),
+            _render_raw(backend, test_out, f"test[{i}] expected (held out)"),
         ]
         if rep is not None:
             trace = predicted[i]
@@ -240,14 +278,14 @@ def _demos(task: Task, rep: CausalRepresentation | None) -> str:
                     '<div class="arrow"><span class="fail">✗</span> program inapplicable</div>'
                 )
             else:
-                ok = trace.outcome.key == as_grid(test_out)
+                ok = trace.outcome.key == backend.canon(test_out)
                 tick = (
                     '<span class="pass">✓ matches expected</span>'
                     if ok
                     else '<span class="fail">✗ differs from expected</span>'
                 )
                 parts.append(
-                    grid_html(trace.outcome.grid, f"test[{i}] predicted", diff_against=test_out)
+                    _render_state(trace.outcome, f"test[{i}] predicted", diff_raw=test_out)
                 )
                 parts.append(f'<div class="arrow">{tick}</div>')
         rows.append(_row(*parts))
@@ -255,12 +293,15 @@ def _demos(task: Task, rep: CausalRepresentation | None) -> str:
 
 
 def _segmentation(task: Task, chosen: str | None) -> str:
-    grid_in = task.train[0][0]
+    backend = representation_of(task)
+    raw_in = task.train[0][0]
     figs = []
-    for name in ABSTRACTIONS:
-        state = parse_grid(grid_in, name)
+    for name in backend.abstractions:
+        state = backend.parse(raw_in, name)
         suffix = " (chosen)" if name == chosen else ""
-        figs.append(state_html(state, f"{name} — {len(state.objects)} object(s){suffix}"))
+        figs.append(
+            _render_segmentation(state, f"{name} — {len(state.objects)} object(s){suffix}")
+        )
     note = (
         "<p>train[0] input under each registered segmentation — a recorded, "
         "revisable modelling decision.</p>"
@@ -337,7 +378,7 @@ def _pertinent(rep: CausalRepresentation) -> str:
 
 def _resegmentation(rep: CausalRepresentation) -> str:
     cards = []
-    for name in ABSTRACTIONS:
+    for name in representation_of(rep.task).abstractions:
         if name == rep.abstraction:
             continue
         cfs = compute(identify(rep, Representational(name)))
@@ -345,10 +386,10 @@ def _resegmentation(rep: CausalRepresentation) -> str:
     return "".join(cards)
 
 
-def _contrast_section(rep: CausalRepresentation, foil: Grid, foil_on: str) -> str:
-    head = _row(grid_html(foil, f"foil for {foil_on}"))
+def _contrast_section(rep: CausalRepresentation, foil: Raw, foil_on: str) -> str:
+    head = _row(_render_raw(representation_of(rep.task), foil, f"foil for {foil_on}"))
     try:
-        cfs = compute(identify(rep, Contrastive(as_grid(foil), on=foil_on, k_max=2)))
+        cfs = compute(identify(rep, Contrastive(foil, on=foil_on, k_max=2)))
     except IdentificationError as err:
         return head + f'<div class="card"><p>{_esc(err)}</p></div>'
     body = "".join(_item_html(item) for item in cfs.items[:3])
@@ -369,6 +410,7 @@ def _contrast_section(rep: CausalRepresentation, foil: Grid, foil_on: str) -> st
 
 def _gate(rep: CausalRepresentation) -> str:
     report = assess(rep)
+    backend = representation_of(rep.task)
     cls = "hi" if report.confidence == "high" else "lo"
     parts = [f'<p class="{cls}">{_esc(report)}</p>']
     for i, outs in enumerate(report.predictions[:4]):
@@ -377,12 +419,14 @@ def _gate(rep: CausalRepresentation) -> str:
             if out is None:
                 figs.append(f'<div class="arrow">class {i} → test[{j}]: inapplicable</div>')
             else:
-                figs.append(grid_html(out, f"class {i} → test[{j}]"))
+                figs.append(_render_key(backend, out, f"class {i} → test[{j}]"))
         parts.append(_row(*figs))
     if len(report.predictions) > 4:
         parts.append(f"<p>(… {len(report.predictions) - 4} more classes)</p>")
     if report.probe is not None:
-        parts.append(_row(grid_html(report.probe, "probe on which the classes part ways")))
+        parts.append(
+            _row(_render_raw(backend, report.probe, "probe on which the classes part ways"))
+        )
     return "".join(parts)
 
 
@@ -414,7 +458,7 @@ def _page(title: str, body: str) -> str:
 
 
 def report_html(
-    rep: CausalRepresentation, *, foil: Grid | None = None, foil_on: str = "test[0]"
+    rep: CausalRepresentation, *, foil: Raw | None = None, foil_on: str = "test[0]"
 ) -> str:
     """The full process page for a fitted representation."""
     task = rep.task
@@ -451,7 +495,7 @@ def unsolved_report_html(task: Task, error: str) -> str:
 
 
 def full_report(
-    task: Task, *, foil: Grid | None = None, foil_on: str = "test[0]", **model_kwargs
+    task: Task, *, foil: Raw | None = None, foil_on: str = "test[0]", **model_kwargs
 ) -> str:
     """model() the task and render the whole pipeline; degrades when nothing fits."""
     try:

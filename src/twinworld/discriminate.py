@@ -15,65 +15,41 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .backend import Raw, get_representation, representation_of
 from .engine import ApplyCache, Program, Task
-from .representation import Grid, Obj, as_grid, parse_grid
-
-MAX_PROBE_OBJECTS = 6  # per train input; keeps the probe set small and readable
+from .representation import Grid
 
 
-def probes(task: Task, abstraction: str = "cc4") -> list[Grid]:
-    """Deterministic probe inputs: the train inputs plus object-level variants."""
-    out: list[Grid] = []
-    seen: set[Grid] = set()
-    used = task.colours()
-    fresh = next((c for c in range(9, -1, -1) if c not in used), 9)
-    for grid_in, _ in task.train:
-        state = parse_grid(grid_in, abstraction)
-        base = state.grid
-        _add(out, seen, base)
-        for o in state.objects[:MAX_PROBE_OBJECTS]:
-            _add(out, seen, _paint(base, o, state.background))  # delete it
-            _add(out, seen, _paint(base, o, fresh))  # recolour to unused colour
-            for dr, dc in ((0, 1), (1, 0)):  # nudge right / down
-                _add(out, seen, _nudge(base, o, dr, dc, state.background))
+def probes(task: Task, abstraction: str | None = None) -> list[Raw]:
+    """Deterministic probe inputs: the train inputs plus the backend's
+    object-level perturbations of them (grid: delete / recolour-fresh / nudge)."""
+    rep = representation_of(task)
+    abstraction = abstraction or rep.default_abstractions[0]
+    out: list[Raw] = []
+    seen: set[Raw] = set()
+    used = rep.task_values(task)
+    for raw_in, _ in task.train:
+        state = rep.parse(raw_in, abstraction)
+        _add(out, seen, rep.raw_of(state))
+        for perturbed in rep.probe_perturbations(state, used):
+            _add(out, seen, perturbed)
     return out
 
 
-def _add(out: list[Grid], seen: set[Grid], grid: Grid | None) -> None:
-    if grid is not None and grid not in seen:
-        seen.add(grid)
-        out.append(grid)
-
-
-def _paint(grid: Grid, obj: Obj, colour: int) -> Grid:
-    rows = [list(r) for r in grid]
-    for r, c in obj.cells:
-        rows[r][c] = colour
-    return as_grid(rows)
-
-
-def _nudge(grid: Grid, obj: Obj, dr: int, dc: int, background: int) -> Grid | None:
-    h, w = len(grid), len(grid[0])
-    targets = {(r + dr, c + dc) for r, c in obj.cells}
-    if not all(0 <= r < h and 0 <= c < w for r, c in targets):
-        return None
-    if any((r, c) not in obj.cells and grid[r][c] != background for r, c in targets):
-        return None
-    rows = [list(r) for r in grid]
-    for r, c in obj.cells:
-        rows[r][c] = background
-    for r, c, colour in obj.pixels:
-        rows[r + dr][c + dc] = colour
-    return as_grid(rows)
+def _add(out: list[Raw], seen: set[Raw], raw: Raw | None) -> None:
+    if raw is not None and raw not in seen:
+        seen.add(raw)
+        out.append(raw)
 
 
 def signature(
-    program: Program, probe_grids: list[Grid], abstraction: str, cache: ApplyCache
+    program: Program, probe_grids: list[Grid], abstraction: str, cache: ApplyCache, rep=None
 ) -> tuple:
     """The program's behaviour fingerprint: its output (or None) on every probe."""
+    rep = rep if rep is not None else get_representation("grid")
     sig = []
     for grid in probe_grids:
-        trace = cache.run(parse_grid(grid, abstraction), program)
+        trace = cache.run(rep.parse(grid, abstraction), program)
         sig.append(trace.outcome.key if trace is not None else None)
     return tuple(sig)
 
@@ -102,15 +78,19 @@ class DiscriminationReport:
         )
 
 
-def diagnose(task: Task, programs: list[Program], abstraction: str = "cc4") -> DiscriminationReport:
+def diagnose(
+    task: Task, programs: list[Program], abstraction: str | None = None
+) -> DiscriminationReport:
     """Group train-fitting programs into probe-equivalence classes."""
+    rep = representation_of(task)
+    abstraction = abstraction or rep.default_abstractions[0]
     probe_grids = probes(task, abstraction)
     cache = ApplyCache()
     groups: dict[tuple, list[Program]] = {}
     for program in programs:
-        groups.setdefault(signature(tuple(program), probe_grids, abstraction, cache), []).append(
-            tuple(program)
-        )
+        groups.setdefault(
+            signature(tuple(program), probe_grids, abstraction, cache, rep), []
+        ).append(tuple(program))
     signatures = list(groups)
     classes = tuple(tuple(groups[s]) for s in signatures)
     if len(classes) < 2:

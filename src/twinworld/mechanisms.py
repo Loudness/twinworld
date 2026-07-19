@@ -42,6 +42,11 @@ DEFAULT_PREIMAGE_BUDGET = PreimageBudget()
 
 @runtime_checkable
 class Mechanism(Protocol):
+    """Optional introspection: ``touched(attr)`` returns the attribute values
+    the mechanism references (a frozenset), or None when anything may be
+    affected. Refuters use it to find spectator objects; a mechanism without
+    the method is treated as touching everything."""
+
     exact_preimage: bool
 
     def apply(self, s: StateGraph) -> StateGraph | None: ...
@@ -90,6 +95,9 @@ class Identity:
     ) -> Iterator[StateGraph]:
         yield s
 
+    def touched(self, attr: str) -> frozenset:
+        return frozenset()
+
     def __str__(self) -> str:
         return "identity"
 
@@ -135,6 +143,9 @@ class Recolor:
                 if pre is not None and self.apply(pre) == s:
                     yield pre
 
+    def touched(self, attr: str) -> frozenset | None:
+        return frozenset({self.src, self.dst}) if attr == "colour" else None
+
     def __str__(self) -> str:
         return f"recolor({self.src}->{self.dst})"
 
@@ -176,6 +187,11 @@ class Translate:
         pre = inverse.apply(s)
         if pre is not None and self.apply(pre) == s:
             yield pre
+
+    def touched(self, attr: str) -> frozenset | None:
+        if attr != "colour" or self.colour is None:
+            return None  # moves everything: no colour is irrelevant
+        return frozenset({self.colour})
 
     def __str__(self) -> str:
         target = "all" if self.colour is None else f"colour {self.colour}"
@@ -233,6 +249,23 @@ class Smallest:
 
 
 @dataclass(frozen=True)
+class ByAttr:
+    """Generic attribute-equality selector — the non-grid backends' ByColour.
+
+    Selects every entity whose name-keyed ``attributes`` carry ``value`` under
+    ``attr`` (entities without the attribute never match)."""
+
+    attr: str
+    value: "object"
+
+    def select(self, objects: tuple[Obj, ...]) -> tuple[Obj, ...]:
+        return tuple(o for o in objects if o.attributes.get(self.attr) == self.value)
+
+    def __str__(self) -> str:
+        return f"{self.attr}-{self.value} objects"
+
+
+@dataclass(frozen=True)
 class Not:
     """Selector negation (thesis Experiment 4): the complement of ``inner``."""
 
@@ -246,7 +279,7 @@ class Not:
         return f"objects other than {self.inner}"
 
 
-Selector = All | ByColour | Largest | Smallest | Not
+Selector = All | ByAttr | ByColour | Largest | Smallest | Not
 
 
 @dataclass(frozen=True)
@@ -311,6 +344,20 @@ class ObjectRule:
         if out is None or out == s:
             return None  # no-op applications are inapplicable, not silent identities
         return out
+
+    def touched(self, attr: str) -> frozenset | None:
+        if attr != "colour":
+            return None
+        sel = self.selector
+        if isinstance(sel, ByColour):
+            refs = {sel.colour}
+        elif isinstance(sel, Not) and isinstance(sel.inner, ByColour):
+            refs = set(range(MAX_COLOURS)) - {sel.inner.colour}  # touches all BUT c
+        else:
+            return None  # All/Largest/Smallest/Not may touch anything
+        if isinstance(self.transform, RecolourTo):
+            refs.add(self.transform.colour)
+        return frozenset(refs)
 
     def preimage(
         self, s: StateGraph, budget: PreimageBudget | None = None

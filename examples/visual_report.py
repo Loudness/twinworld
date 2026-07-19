@@ -14,7 +14,7 @@ from twinworld.viz import full_report, save_report, show
 
 
 def blocks_demo():
-    from twinworld.domains.blocks import build_grid, candidate_moves, task_from_towers
+    from twinworld.domains.blocks import candidate_moves, task_from_towers
 
     task = task_from_towers(
         train=[
@@ -27,7 +27,7 @@ def blocks_demo():
         "primitives": candidate_moves(task),
         "induction": "never",
         "max_depth": 2,
-        "foil": build_grid([[], [5, 2, 1], []]),  # why not block 1 ON TOP of block 2?
+        "foil": [[], [5, 2, 1], []],  # why not block 1 ON TOP of block 2?
         "foil_on": "test[0]",
     }
     return task, kwargs

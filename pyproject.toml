@@ -9,7 +9,7 @@ description = "Counterfactual reasoning and explanation over symbolic state-tran
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-authors = [{ name = "Aries" }]
+authors = [{ name = "Aries Bucquet" }]
 keywords = [
     "counterfactuals",
     "causality",
@@ -34,9 +34,9 @@ dependencies = [
 
 [project.urls]
 # TODO(release): point at the public repository once it exists
-Homepage = "https://github.com/OWNER/twinworld"
-Repository = "https://github.com/OWNER/twinworld"
-Issues = "https://github.com/OWNER/twinworld/issues"
+Homepage = "https://github.com/loudness/twinworld"
+Repository = "https://github.com/loudness/twinworld"
+Issues = "https://github.com/loudness/twinworld/issues"
 
 [project.optional-dependencies]
 arc = ["arckit>=0.1"]

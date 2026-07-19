@@ -257,6 +257,7 @@ def solution_from_asp(task: Task, abstraction: str, result: AspResult) -> Soluti
     return Solution(
         task, program, train_traces, test_traces, cache,
         programs_tried=result.proposed, strategy="asp",
+        searched=frozenset(cache.dag.nodes),
     )
 
 

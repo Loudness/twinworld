@@ -54,12 +54,16 @@ on which they part ways.
 
 The generality claim is substantiated, not asserted: `twinworld.domains.blocks`
 runs the identical core on **blocks world** — the canonical STRIPS planning
-domain — where the domain plugin supplies only a perception adapter and a
-`MoveBlock` primitive with real preconditions and gravity (the same move
-displaces a block differently in different states, provably inexpressible as
-a translation rule). Contrastive plan edits, pertinent negatives (clearance
-and landing-height presuppositions), necessity analysis, and determinism
-diagnosis all work unchanged (`examples/blocks_world.py`).
+domain — **natively, on a relational representation backend** (tower states
+with unbounded columns; no grid in the pipeline), where the domain supplies
+only a `MoveBlock` primitive with real preconditions and gravity (the same
+move displaces a block differently in different states, provably
+inexpressible as a translation rule). Contrastive plan edits, pertinent
+negatives (clearance and landing-height presuppositions), necessity analysis,
+and determinism diagnosis all work unchanged (`examples/blocks_world.py`),
+and the historical grid serialization is kept as a **τ-abstraction
+cross-check**: native and serialized runs must commute
+(`tests/test_blocks_tau.py`, after Beckers & Halpern).
 
 Two further solving strategies complement analogy: `model(induction="asp")`
 hands the program search to **clingo** — choice rules over (selector,
@@ -193,25 +197,54 @@ not an error).
 
 ## Using twinworld in your own domain
 
-The core is domain-generic within an honest boundary: **deterministic,
-fully-observable problems whose states render as 2D integer grids with colour
-ids 0–9** (`twinworld.representation.MAX_COLOURS`; background is inferred as
-the most frequent colour, ties to 0). A domain plugin owes the core exactly
-three things — [domains/blocks.py](src/twinworld/domains/blocks.py) is the
-complete ~150-line worked template:
+The core dispatches through a **representation backend** registry
+(`twinworld.backend.Representation`): the engine trusts states for exactly one
+hashable canonical `key` plus an entity/attribute ontology, so any
+deterministic, fully-observable symbolic domain can plug in. **Five backends
+ship today**: `"grid"` (ARC's 2D colour grids, ids 0–9, the default),
+`"relational"` (STRIPS-style column worlds — blocks world runs natively:
+[backends/relational.py](src/twinworld/backends/relational.py) +
+[domains/blocks.py](src/twinworld/domains/blocks.py) are the worked template),
+`"sequence"` (letter strings — Copycat's home domain, where rule induction
+proposes "advance the rightmost letter" from abc→abd and Lewis & Mitchell's
+counterfactual alphabets are ordinary interventions), `"tabular"` (feature
+rows whose deterministic decision list IS the program — recourse what-ifs and
+Rashomon-set diagnosis with certificates), and `"graph"` (labelled simple
+graphs, where exhaustive one-edge sweeps answer the GNN explainers' question
+with certainty). Each has a measured end-to-end example:
 
-1. a **perception adapter** mapping your states to `Grid`/`Task`
-   (blocks world: `build_grid`, `towers_of`, `task_from_towers`);
+```bash
+python examples/blocks_world.py       # relational: STRIPS plans, native
+python examples/letter_strings.py     # sequence: abc -> abd + counterfactual alphabets
+python examples/tabular_recourse.py   # tabular: decision-list recourse + Rashomon
+python examples/graph_motifs.py       # graph: triangle motif + edge-edit certificates
+```
+
+Alternative sets from every query are uniformly rankable: `twinworld.Alternatives`
+carries contrastive edit sets, preimage candidates, program classes and
+pertinent-negative witnesses with named scores, `pareto_front` returns the
+**exact** Pareto front (the sets are exhaustively enumerated — no NSGA-II
+approximation), and `MetricVector` now carries `plausible`/`reachable`
+certificates alongside validity/sparsity/proximity. A backend owes the core:
+
+1. **perception & identity** — `parse(raw) → State` whose `key` is canonical
+   (equality/hashing route through it; identity must not depend on the chosen
+   segmentation), `canon(raw) → key`, a frame invariant, and entities exposing
+   name-keyed `attributes`;
 2. **mechanism primitives** — frozen dataclasses with `apply(state)`,
    `preimage(state, budget)` and an `exact_preimage` flag; real preconditions
    welcome (`MoveBlock` has clearance checks and gravity);
 3. a **candidate generator** enumerating the task-scoped primitive vocabulary
    (`candidate_moves(task)`).
 
-Everything else comes free and unchanged: program induction, twin-world
-interventions, backtracking, certified-minimal contrastives, pertinent
-negatives, the underdetermination gate, the refuters, and the HTML
-visualization.
+Optional capability hooks add probe generation, pertinent-negative
+catalogues, placebo edits, a native distance, and HTML rendering — and
+`twinworld.conformance_battery` checks the backend laws (L1–L7: parse/canon
+agreement, abstraction-invariant identity, preimage soundness, rebuild
+closure), so "supports twinworld" is a measured claim. Everything else comes
+free and unchanged: program induction, twin-world interventions,
+backtracking, certified-minimal contrastives, pertinent negatives, the
+underdetermination gate, the refuters, and the visualization.
 
 ## Development
 

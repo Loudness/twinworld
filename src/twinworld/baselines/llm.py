@@ -42,6 +42,10 @@ def parse_grid_text(text: str) -> Grid | None:
 
 def build_prompt(task: Task, cf_demos=None) -> str:
     """Demonstrations (+ optional labelled counterfactual pairs) -> test input."""
+    if task.representation != "grid":
+        raise ValueError(
+            f"the LLM baseline is grid-only; task uses {task.representation!r}"
+        )
     parts = [
         "You are solving an abstract reasoning puzzle. Each grid is rows of "
         "digits 0-9. Infer the transformation from the examples and apply it "

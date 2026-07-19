@@ -6,6 +6,7 @@ from .api import (
     CausalRepresentation,
     ConfidenceReport,
     Contrastive,
+    CounterfactualItem,
     CounterfactualSet,
     IdentificationError,
     IdentifiedQuery,
@@ -19,11 +20,23 @@ from .api import (
     predict,
     refute,
 )
+from .alternatives import GENERIC_POLICIES, Alternatives, rank_preimages
 from .analogy import content_vector, induce_rules, retrieve, structure_map
+from .backend import (
+    REPRESENTATIONS,
+    Addition,
+    ConformanceReport,
+    capabilities,
+    conformance_battery,
+    get_representation,
+    register,
+    representation_of,
+)
 from .concepts import DEFAULT_CONCEPTS, ConceptNet, learn_concepts
 from .engine import Counterfactual, Solution, Task, Trace, UnsolvedTaskError, solve
 from .mechanisms import (
     All,
+    ByAttr,
     ByColour,
     Delete,
     Identity,
@@ -38,25 +51,44 @@ from .mechanisms import (
     TranslateBy,
     candidate_primitives,
 )
-from .metrics import MetricVector, evaluate, proximity, sparsity, validity
+from .metrics import (
+    MetricVector,
+    diversity,
+    dominates,
+    edited_steps,
+    evaluate,
+    pareto_front,
+    proximity,
+    responsibility_profile,
+    sparsity,
+    validity,
+)
 from .refute import RefutationReport
-from .select import select
+from .select import POLICIES, resolve_with_probe, select
 from .representation import Grid, Obj, StateGraph, as_grid, match_objects, parse_grid
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "Addition",
     "All",
+    "Alternatives",
     "Backtracking",
+    "ByAttr",
     "ByColour",
     "CausalRepresentation",
     "ConfidenceReport",
+    "ConformanceReport",
     "Contrastive",
     "ConceptNet",
     "Counterfactual",
+    "CounterfactualItem",
     "CounterfactualSet",
     "DEFAULT_ABSTRACTIONS",
     "DEFAULT_CONCEPTS",
+    "GENERIC_POLICIES",
+    "POLICIES",
+    "REPRESENTATIONS",
     "Delete",
     "Grid",
     "Largest",
@@ -89,16 +121,28 @@ __all__ = [
     "as_grid",
     "assess",
     "candidate_primitives",
+    "capabilities",
     "compute",
+    "conformance_battery",
+    "diversity",
+    "dominates",
+    "edited_steps",
     "evaluate",
+    "get_representation",
     "identify",
     "learn_concepts",
     "match_objects",
     "model",
+    "pareto_front",
     "parse_grid",
     "predict",
     "proximity",
+    "rank_preimages",
     "refute",
+    "register",
+    "representation_of",
+    "resolve_with_probe",
+    "responsibility_profile",
     "select",
     "solve",
     "sparsity",

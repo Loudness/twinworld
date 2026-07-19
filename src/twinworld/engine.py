@@ -21,8 +21,9 @@ from typing import Sequence
 
 import networkx as nx
 
+from .backend import Raw, representation_of
 from .mechanisms import Mechanism, PreimageBudget
-from .representation import Grid, StateGraph, as_grid, parse_grid
+from .representation import Grid, StateGraph
 
 Program = tuple[Mechanism, ...]
 
@@ -34,6 +35,7 @@ class Task:
     train: tuple[tuple[Grid, Grid], ...]
     test: tuple[tuple[Grid, Grid], ...]
     task_id: str = "synthetic"
+    representation: str = "grid"
 
     def colours(self) -> set[int]:
         return {
@@ -103,6 +105,10 @@ class Solution:
     cache: ApplyCache
     programs_tried: int = 0
     strategy: str = "enumerate"  # "enumerate" (blind) | "analogy" (induced rules)
+    # state keys visited DURING SEARCH — snapshot at solve() return. The live
+    # cache.dag keeps growing as counterfactuals are computed through it, so
+    # reachability certificates must use this frozen set, never the live DAG.
+    searched: frozenset | None = None
 
     @property
     def dag(self) -> nx.DiGraph:
@@ -118,7 +124,7 @@ def solve(
     task: Task,
     primitives: Sequence[Mechanism],
     max_depth: int = 2,
-    abstraction: str = "cc4",
+    abstraction: str | None = None,
     strategy: str = "enumerate",
 ) -> Solution:
     """Breadth-first program induction: the shortest program mapping every train
@@ -127,8 +133,10 @@ def solve(
     Every candidate expansion lands in the trajectory DAG, so counterfactual
     search later works over ground the solver has actually visited.
     """
+    rep = representation_of(task)
+    abstraction = abstraction or rep.default_abstractions[0]
     cache = ApplyCache()
-    train_inputs = [parse_grid(i, abstraction) for i, _ in task.train]
+    train_inputs = [rep.parse(i, abstraction) for i, _ in task.train]
     tried = 0
     for depth in range(1, max_depth + 1):
         for program in product(primitives, repeat=depth):
@@ -136,16 +144,19 @@ def solve(
             traces = []
             for state, (_, expected) in zip(train_inputs, task.train):
                 trace = cache.run(state, program)
-                if trace is None or trace.outcome.key != as_grid(expected):
+                if trace is None or trace.outcome.key != rep.canon(expected):
                     break
                 traces.append(trace)
             else:
                 test_traces = tuple(
                     t
                     for i, _ in task.test
-                    if (t := cache.run(parse_grid(i, abstraction), program)) is not None
+                    if (t := cache.run(rep.parse(i, abstraction), program)) is not None
                 )
-                return Solution(task, program, tuple(traces), test_traces, cache, tried, strategy)
+                return Solution(
+                    task, program, tuple(traces), test_traces, cache, tried, strategy,
+                    searched=frozenset(cache.dag.nodes),
+                )
     raise UnsolvedTaskError(
         f"no program of depth <= {max_depth} over {len(primitives)} primitives "
         f"solves task {task.task_id} ({tried} programs tried)"
@@ -186,9 +197,9 @@ def intervene(
     return Counterfactual("interventional", trace, cf_trace, step, cf_program)
 
 
-def backtrack(solution: Solution, trace: Trace, edited_input: Grid) -> Counterfactual:
+def backtrack(solution: Solution, trace: Trace, edited_input: Raw) -> Counterfactual:
     """Backtracking counterfactual: same laws (program), different initial world."""
-    start = parse_grid(edited_input, trace.states[0].abstraction)
+    start = representation_of(solution.task).parse(edited_input, trace.states[0].abstraction)
     cf_trace = solution.cache.run(start, trace.mechanisms)
     return Counterfactual("backtracking", trace, cf_trace, 0, trace.mechanisms)
 
@@ -196,7 +207,7 @@ def backtrack(solution: Solution, trace: Trace, edited_input: Grid) -> Counterfa
 def minimal_edits(
     solution: Solution,
     trace: Trace,
-    target: Grid,
+    target: Raw,
     pool: Sequence[Mechanism],
     k_max: int = 2,
     max_results: int = 16,
@@ -211,7 +222,7 @@ def minimal_edits(
     of the returned *set* is capped at ``max_results`` per k; minimality of k
     itself is never affected by the cap.
     """
-    target = as_grid(target)
+    target = representation_of(solution.task).canon(target)
     pool = list(dict.fromkeys(pool))
     n = len(trace.mechanisms)
     for k in range(1, min(k_max, n) + 1):
@@ -276,16 +287,18 @@ def solve_all(
     task: Task,
     primitives: Sequence[Mechanism],
     max_depth: int = 2,
-    abstraction: str = "cc4",
+    abstraction: str | None = None,
     limit: int = 32,
 ) -> list[Program]:
     """Every program (up to ``limit``) that fits all train pairs, at the
     minimal depth where any fits — the raw material for underdetermination
     diagnosis: programs indistinguishable on the demonstrations can only be
     told apart counterfactually."""
+    rep = representation_of(task)
+    abstraction = abstraction or rep.default_abstractions[0]
     cache = ApplyCache()
-    train_inputs = [parse_grid(i, abstraction) for i, _ in task.train]
-    expected = [as_grid(o) for _, o in task.train]
+    train_inputs = [rep.parse(i, abstraction) for i, _ in task.train]
+    expected = [rep.canon(o) for _, o in task.train]
     for depth in range(1, max_depth + 1):
         fits: list[Program] = []
         for program in product(primitives, repeat=depth):

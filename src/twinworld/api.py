@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Hashable, Sequence
 
 if TYPE_CHECKING:
     from .discriminate import DiscriminationReport
 
 from . import metrics as _metrics
 from .analogy import induce_rules
+from .backend import Addition, representation_of
 from .concepts import ConceptNet
 from .engine import (
     Counterfactual,
@@ -30,9 +31,9 @@ from .engine import (
     minimal_edits,
     solve,
 )
-from .mechanisms import Mechanism, candidate_primitives
+from .mechanisms import Mechanism
 from .refute import RefutationReport, refutation_battery
-from .representation import ABSTRACTIONS, Grid, as_grid, infer_background, parse_grid
+from .representation import Grid
 
 DEFAULT_ABSTRACTIONS = ("cc4", "cc8", "mcc")
 
@@ -78,6 +79,10 @@ def _fit_abstraction(
     stays cheap — the Chollet-efficiency argument in code.
     """
     if induction == "asp":
+        if task.representation != "grid":
+            raise UnsolvedTaskError(
+                f"the ASP induction backend is grid-only; task uses {task.representation!r}"
+            )
         from .asp_solver import asp_solve, solution_from_asp
 
         result = asp_solve(task, abstraction=abstraction, max_depth=analogy_depth)
@@ -102,7 +107,7 @@ def _fit_abstraction(
 
 def model(
     task: Task,
-    abstractions: Sequence[str] = DEFAULT_ABSTRACTIONS,
+    abstractions: Sequence[str] | None = None,
     primitives: Sequence[Mechanism] | None = None,
     max_depth: int = 2,
     induction: str = "auto",
@@ -120,10 +125,11 @@ def model(
     to abstraction order), and both the abstraction choice and the strategy
     that produced the program are recorded as revisable modelling decisions.
     """
+    backend = representation_of(task)
+    if abstractions is None:
+        abstractions = backend.default_abstractions
     if primitives is None:
-        primitives = candidate_primitives(
-            task.colours(), background=infer_background(as_grid(task.train[0][0]))
-        )
+        primitives = backend.candidate_primitives(task)
     solutions: dict[str, Solution] = {}
     failures: dict[str, str] = {}
     for abstraction in abstractions:
@@ -214,7 +220,7 @@ class PertinentNegative:
     # colours=None probes the task palette plus one fresh colour; pass an
     # explicit tuple to restrict (e.g. only a fresh colour, when palette
     # duplicates would trip uniqueness preconditions everywhere).
-    colours: tuple[int, ...] | None = None
+    colours: tuple[Hashable, ...] | None = None  # backends read these as generic values
 
 
 Query = Interventional | Backtracking | Representational | Contrastive | PertinentNegative
@@ -249,6 +255,7 @@ class IdentifiedQuery:
 def identify(rep: CausalRepresentation, query: Query) -> IdentifiedQuery:
     """Structural well-posedness check; no counterfactual is computed here."""
     program = rep.solution.program
+    backend = representation_of(rep.task)
     if isinstance(query, Interventional):
         if not 0 <= query.step < len(program):
             raise IdentificationError(
@@ -262,19 +269,19 @@ def identify(rep: CausalRepresentation, query: Query) -> IdentifiedQuery:
             )
         return IdentifiedQuery(rep, query, "interventional")
     if isinstance(query, Backtracking):
-        edited = parse_grid(query.edited_input, rep.abstraction)
+        edited = backend.parse(query.edited_input, rep.abstraction)
         factual_start = rep.solution.train_traces[0].states[0]
-        if (edited.height, edited.width) != (factual_start.height, factual_start.width):
+        if backend.frame(edited) != backend.frame(factual_start):
             raise IdentificationError(
                 "edited input has different dimensions than the factual input; "
                 "backtracking counterfactuals hold the world's frame fixed"
             )
         return IdentifiedQuery(rep, query, "backtracking")
     if isinstance(query, Representational):
-        if query.abstraction not in ABSTRACTIONS:
+        if query.abstraction not in backend.abstractions:
             raise IdentificationError(
                 f"unknown abstraction {query.abstraction!r}; "
-                f"registered: {sorted(ABSTRACTIONS)}"
+                f"registered: {sorted(backend.abstractions)}"
             )
         if query.abstraction == rep.abstraction:
             raise IdentificationError(
@@ -286,7 +293,7 @@ def identify(rep: CausalRepresentation, query: Query) -> IdentifiedQuery:
         trace = _resolve_trace(rep, query.on)
         if query.k_max < 1:
             raise IdentificationError("k_max must be at least 1")
-        if as_grid(query.target_output) == trace.outcome.key:
+        if backend.canon(query.target_output) == trace.outcome.key:
             raise IdentificationError(
                 f"the target equals the factual outcome of {query.on}; "
                 f"the counterfactual would be the factual world"
@@ -296,6 +303,11 @@ def identify(rep: CausalRepresentation, query: Query) -> IdentifiedQuery:
         _resolve_trace(rep, query.on)
         if query.max_cells < 1:
             raise IdentificationError("max_cells must be at least 1")
+        if not hasattr(backend, "addition_catalogue"):
+            raise IdentificationError(
+                f"pertinent negatives need an addition catalogue; the "
+                f"{backend.name} representation does not define one"
+            )
         return IdentifiedQuery(rep, query, "pertinent_negative")
     raise IdentificationError(f"unknown query type {type(query).__name__}")
 
@@ -315,9 +327,22 @@ class CounterfactualSet:
     identified: IdentifiedQuery
     items: tuple[CounterfactualItem, ...]
     responsibility: dict[int, float] | None = None  # per-step, contrastive mode only
+    diversity: float | None = None  # mean pairwise outcome distance, ≥2 applicable items
 
     def __str__(self) -> str:
         return "\n".join(item.narrative for item in self.items)
+
+    def alternatives(self):
+        """This set as a uniform :class:`~twinworld.alternatives.Alternatives`
+        container — the same ranking/Pareto machinery that serves program
+        classes and preimage candidates."""
+        from .alternatives import Alternatives
+
+        kind = {"contrastive": "edit_sets", "pertinent_negative": "pn_witnesses"}.get(
+            self.identified.mode, self.identified.mode
+        )
+        scores = tuple(item.metrics.as_dict() for item in self.items)
+        return Alternatives(kind, self.items, scores, context=self)
 
 
 def compute(identified: IdentifiedQuery, backend: str = "cf.twinworld") -> CounterfactualSet:
@@ -350,99 +375,78 @@ def compute(identified: IdentifiedQuery, backend: str = "cf.twinworld") -> Count
     return CounterfactualSet(identified, tuple(items))
 
 
-_ADDITION_SHAPES: dict[int, tuple[tuple[tuple[int, int], ...], ...]] = {
-    1: (((0, 0),),),
-    2: (((0, 0), (0, 1)), ((0, 0), (1, 0))),
-    3: (((0, 0), (0, 1), (0, 2)), ((0, 0), (1, 0), (2, 0))),
-}
-
-
 def _pertinent(identified: IdentifiedQuery) -> CounterfactualSet:
-    """Enumerate separated additions by footprint; report certified-minimal
-    witnesses within the declared catalogue, or a bounded robustness certificate."""
+    """Walk the backend's addition catalogue by footprint; report
+    certified-minimal witnesses within the declared catalogue, or a bounded
+    robustness certificate. One witness per catalogue group (per anchor)."""
     rep, query = identified.rep, identified.query
+    backend = representation_of(rep.task)
     trace = _resolve_trace(rep, query.on)
     state = trace.states[0]
-    grid, background = state.grid, state.background
-    h, w = state.height, state.width
-    occupied = {cell for o in state.objects for cell in o.cells}
-    excluded = occupied
-    if query.separated:
-        excluded = {
-            (r + dr, c + dc)
-            for r, c in occupied
-            for dr in (-1, 0, 1)
-            for dc in (-1, 0, 1)
-        }
-    free = {
-        (r, c)
-        for r in range(h)
-        for c in range(w)
-        if (r, c) not in excluded and grid[r][c] == background
-    }
-    anchors = sorted(free)[:80]
     if query.colours is not None:
-        colours = list(query.colours)
+        values = list(query.colours)
     else:
-        palette = sorted(rep.task.colours() - {background})
-        fresh = next((c for c in range(9, -1, -1) if c not in rep.task.colours()), None)
-        colours = palette + ([fresh] if fresh is not None else [])
+        values = backend.addition_values(state, rep.task)
 
-    for size in range(1, min(query.max_cells, max(_ADDITION_SHAPES)) + 1):
-        witnesses: list[tuple[list, int, Counterfactual, str]] = []
-        for anchor_r, anchor_c in anchors:
-            if len(witnesses) >= query.max_witnesses:
-                break
-            for shape in _ADDITION_SHAPES[size]:
-                cells = [(anchor_r + r, anchor_c + c) for r, c in shape]
-                if not all(cell in free for cell in cells):
-                    continue
-                hit = None
-                for colour in colours:
-                    rows = [list(row) for row in grid]
-                    for r, c in cells:
-                        rows[r][c] = colour
-                    cf_run = backtrack(rep.solution, trace, as_grid(rows))
-                    pertinent, detail = _absence_matters(trace, cf_run)
-                    if pertinent:
-                        hit = (colour, cf_run, detail)
-                        break
-                if hit is not None:
-                    colour, cf_run, detail = hit
-                    cf = Counterfactual(
-                        "pertinent_negative", trace, cf_run.counterfactual, 0, trace.mechanisms
-                    )
-                    witnesses.append((cells, colour, cf, detail))
-                    break  # one witness per anchor is plenty
-        if witnesses:
-            items = []
-            for cells, colour, cf, detail in witnesses:
-                m = _metrics.evaluate(rep.solution, cf)
-                items.append(
-                    CounterfactualItem(
-                        cf,
-                        m,
-                        f"{query.on}: had a colour-{colour} object occupied {cells}, "
-                        f"{detail} — its absence is load-bearing ({size}-cell addition; "
-                        f"minimal within the catalogue, certified).",
-                    )
+    witnesses: list[tuple[Addition, Counterfactual, str]] = []
+    current_size: int | None = None
+    hit_groups: set = set()
+    for add in backend.addition_catalogue(state, query.max_cells, query.separated, values):
+        if add.size != current_size:
+            if witnesses:
+                break  # a smaller footprint already yielded witnesses: minimal
+            current_size, hit_groups = add.size, set()
+        if add.group in hit_groups:
+            continue  # one witness per anchor is plenty
+        if len(witnesses) >= query.max_witnesses:
+            break
+        cf_run = backtrack(rep.solution, trace, add.raw)
+        pertinent, detail = _absence_matters(trace, cf_run)
+        if pertinent:
+            hit_groups.add(add.group)
+            cf = Counterfactual(
+                "pertinent_negative", trace, cf_run.counterfactual, 0, trace.mechanisms
+            )
+            witnesses.append((add, cf, detail))
+    if witnesses:
+        items = []
+        for add, cf, detail in witnesses:
+            m = _metrics.evaluate(rep.solution, cf)
+            items.append(
+                CounterfactualItem(
+                    cf,
+                    m,
+                    f"{query.on}: had {add.phrase}, "
+                    f"{detail} — its absence is load-bearing ({add.size}-cell addition; "
+                    f"minimal within the catalogue, certified).",
                 )
-            return CounterfactualSet(identified, tuple(items))
+            )
+        return CounterfactualSet(
+            identified, tuple(items), diversity=_diversity_of([cf for _, cf, _ in witnesses])
+        )
     cf = Counterfactual("pertinent_negative", trace, None, 0, trace.mechanisms)
     m = _metrics.evaluate(rep.solution, cf)
     narrative = (
         f"{query.on}: no added separated object of up to {query.max_cells} cell(s) in "
-        f"{len(colours)} colour(s) changes any original object's outcome — within this "
+        f"{len(values)} value(s) changes any original object's outcome — within this "
         f"catalogue, the outcome depends on no absence (bounded certificate)."
     )
     return CounterfactualSet(identified, (CounterfactualItem(cf, m, narrative),))
 
 
+def _diversity_of(cfs: list[Counterfactual]) -> float | None:
+    """Mean pairwise outcome distance of a returned set; None below two
+    applicable members (a singleton has no diversity to report)."""
+    if sum(1 for cf in cfs if cf.applicable) < 2:
+        return None
+    return _metrics.diversity(cfs)
+
+
 def _absence_matters(trace: Trace, cf_run: Counterfactual) -> tuple[bool, str]:
     if not cf_run.applicable:
         return True, "the program would no longer apply"
-    factual_images = {o.pixels for o in trace.outcome.objects}
-    cf_images = {o.pixels for o in cf_run.counterfactual.outcome.objects}
+    factual_images = {o.extent for o in trace.outcome.objects}
+    cf_images = {o.extent for o in cf_run.counterfactual.outcome.objects}
     if factual_images - cf_images:
         return True, "an original object's outcome would change"
     return False, ""
@@ -487,7 +491,7 @@ def _contrast(identified: IdentifiedQuery) -> CounterfactualSet:
             )
         )
     return CounterfactualSet(
-        identified, tuple(items), _metrics.responsibility_profile(cfs)
+        identified, tuple(items), _metrics.responsibility_profile(cfs), _diversity_of(cfs)
     )
 
 
@@ -633,7 +637,8 @@ def assess(rep: CausalRepresentation) -> ConfidenceReport:
         fits = [tuple(rep.solution.program), *fits]
     report = diagnose(rep.task, fits, rep.abstraction)
     cache = ApplyCache()
-    test_inputs = [parse_grid(i, rep.abstraction) for i, _ in rep.task.test]
+    backend = representation_of(rep.task)
+    test_inputs = [backend.parse(i, rep.abstraction) for i, _ in rep.task.test]
     predictions = []
     for cls in report.classes:
         outs = tuple(
