@@ -1,5 +1,7 @@
 # twinworld
 
+[![release](https://github.com/Loudness/twinworld/actions/workflows/release.yml/badge.svg)](https://github.com/Loudness/twinworld/actions/workflows/release.yml)
+
 ## What this is
 
 `twinworld` is a Python library for counterfactual reasoning and explanation over symbolic

@@ -33,7 +33,6 @@ dependencies = [
 ]
 
 [project.urls]
-# TODO(release): point at the public repository once it exists
 Homepage = "https://github.com/loudness/twinworld"
 Repository = "https://github.com/loudness/twinworld"
 Issues = "https://github.com/loudness/twinworld/issues"
