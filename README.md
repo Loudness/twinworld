@@ -16,50 +16,10 @@ plug in later through the backend registry without touching the core.
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    user["your code"] --> api
+![twinworld architecture](https://raw.githubusercontent.com/Loudness/twinworld/main/assets/architecture.svg)
 
-    api["api.py<br/>model → identify → compute → refute<br/>assess / predict"]
-    engine["engine.py — causal core<br/>Trace = structural causal model<br/>solve · abduce_inputs"]
-    mechanisms["mechanisms.py<br/>pure state functions<br/>apply · preimage"]
-    backend["backend.py<br/>Representation contract<br/>(laws L1–L7)"]
-
-    api --> engine
-    api --> support
-    engine --> mechanisms
-    mechanisms --> backend
-
-    subgraph support["supporting modules"]
-        direction TB
-        search["analogy · concepts · copycat"]
-        diag["discriminate · select · alternatives"]
-        qc["metrics · refute · asp"]
-        viz["viz — self-contained HTML reports"]
-    end
-
-    subgraph backends["backends/ — registered by name"]
-        direction LR
-        grid["grid"]
-        relational["relational"]
-        sequence["sequence"]
-        tabular["tabular"]
-        graphb["graph"]
-    end
-
-    backend --> backends
-
-    subgraph domains["domains/ — thin adapters"]
-        direction LR
-        arc["arc"]
-        blocks["blocks"]
-        causalarc["causalarc"]
-    end
-
-    arc -.-> grid
-    causalarc -.-> grid
-    blocks -.-> relational
-```
+*Diagram source: [assets/architecture.mmd](assets/architecture.mmd) — regenerate with
+`npx -y @mermaid-js/mermaid-cli -i assets/architecture.mmd -o assets/architecture.svg -b white`.*
 
 The staged verbs in `api.py` drive the causal core in `engine.py`, where a `Trace` of states
 connected by pure `Mechanism` applications *is* the structural causal model. The core touches

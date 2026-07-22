@@ -3,9 +3,9 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "twinworld"
-version = "0.1.1"
-description = "Counterfactual reasoning and explanation over symbolic state-transition traces — twin-world forking, certified minimal contrastives, and a DoWhy-style staged API; ARC and blocks world as first domains"
+name = "TwinWorld"
+version = "0.1.2"
+description = "Counterfactual reasoning and explanation over symbolic state-transition traces"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
